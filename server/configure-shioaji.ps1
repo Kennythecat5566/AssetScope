@@ -5,15 +5,19 @@ if (-not (Test-Path -LiteralPath $EnvPath)) {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot ".env.example") -Destination $EnvPath
 }
 
-function Read-SecretText([string]$Prompt) {
-    $SecureValue = Read-Host $Prompt -AsSecureString
-    $Pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecureValue)
-    try {
-        return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($Pointer)
+function Read-SecretFromClipboard([string]$Name) {
+    Read-Host "Copy the $Name, then press Enter (do not paste it into this window)"
+    $ClipboardValue = Get-Clipboard -Raw
+    Set-Clipboard -Value ""
+    $Value = "$ClipboardValue".Trim()
+    if ($Value.Contains("`r") -or $Value.Contains("`n")) {
+        throw "$Name must contain exactly one line."
     }
-    finally {
-        [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($Pointer)
+    if ($Value.Length -lt 10) {
+        throw "$Name must contain at least 10 characters; received $($Value.Length)."
     }
+    Write-Host "$Name received ($($Value.Length) characters)."
+    return $Value
 }
 
 function Set-EnvValue([string[]]$Lines, [string]$Name, [string]$Value) {
@@ -34,15 +38,8 @@ function Set-EnvValue([string[]]$Lines, [string]$Name, [string]$Value) {
     return $Updated
 }
 
-$ApiKey = Read-SecretText "Shioaji API Key"
-$SecretKey = Read-SecretText "Shioaji Secret Key"
-if ($ApiKey.Length -lt 10 -or $SecretKey.Length -lt 10) {
-    throw "API Key and Secret Key must each contain at least 10 characters."
-}
-if ($ApiKey.Contains("`r") -or $ApiKey.Contains("`n") -or
-    $SecretKey.Contains("`r") -or $SecretKey.Contains("`n")) {
-    throw "Credentials cannot contain line breaks."
-}
+$ApiKey = Read-SecretFromClipboard "Shioaji API Key"
+$SecretKey = Read-SecretFromClipboard "Shioaji Secret Key"
 
 $Lines = @(Get-Content -LiteralPath $EnvPath -Encoding UTF8)
 $Lines = Set-EnvValue $Lines "ASSETSCOPE_SHIOAJI_ENABLED" "true"

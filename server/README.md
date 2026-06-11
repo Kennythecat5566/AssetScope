@@ -106,6 +106,11 @@ You can store the credentials without showing them in the terminal:
 .\configure-shioaji.cmd
 ```
 
+The setup tool avoids PowerShell secure-paste issues by reading one credential
+at a time from the clipboard. Copy the requested value and press Enter without
+pasting it into the terminal. The clipboard is cleared immediately after each
+read, and only the character count is displayed.
+
 Create the API Key and Secret Key in the official SinoPac API management page.
 Enable `Account` and `Production Environment`; trading permission is not
 required. Restrict the key to this PC's IP when practical. Do not enter your
