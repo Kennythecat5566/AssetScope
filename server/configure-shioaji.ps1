@@ -1,4 +1,5 @@
 $ErrorActionPreference = "Stop"
+Add-Type -AssemblyName System.Windows.Forms
 
 $EnvPath = Join-Path $PSScriptRoot ".env"
 if (-not (Test-Path -LiteralPath $EnvPath)) {
@@ -8,8 +9,13 @@ if (-not (Test-Path -LiteralPath $EnvPath)) {
 function Read-SecretFromClipboard([string]$Name) {
     Read-Host "Copy the $Name, then press Enter (do not paste it into this window)"
     $ClipboardValue = Get-Clipboard -Raw
-    Set-Clipboard -Value ""
     $Value = "$ClipboardValue".Trim()
+    try {
+        [System.Windows.Forms.Clipboard]::Clear()
+    }
+    catch {
+        Write-Warning "Could not clear the clipboard. Clear it manually after setup."
+    }
     if ($Value.Contains("`r") -or $Value.Contains("`n")) {
         throw "$Name must contain exactly one line."
     }
