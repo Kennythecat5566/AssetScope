@@ -42,7 +42,7 @@ class PortfolioApiClient {
                 ?.use { it.readText() }
                 .orEmpty()
             require(status in 200..299) {
-                JSONObject(body.ifBlank { "{}" }).optString("detail", "伺服器回應 HTTP $status")
+                errorMessage(status, body)
             }
             parse(body)
         } finally {
@@ -129,6 +129,24 @@ class PortfolioApiClient {
     }
 
     companion object {
+        fun errorMessage(status: Int, body: String): String {
+            val detail = runCatching {
+                JSONObject(body).optString("detail").trim()
+            }.getOrNull().orEmpty()
+            if (detail.isNotBlank()) return detail
+
+            val plainText = body
+                .replace(Regex("<[^>]+>"), " ")
+                .replace(Regex("\\s+"), " ")
+                .trim()
+                .take(160)
+            return when {
+                status >= 500 -> "伺服器內部錯誤（HTTP $status），請檢查電腦伺服器"
+                plainText.isNotBlank() -> "$plainText（HTTP $status）"
+                else -> "伺服器回應 HTTP $status"
+            }
+        }
+
         fun normalizeApiToken(value: String): String {
             val normalized = value.trim()
             require(normalized.length >= 16) { "API Token 至少需要 16 個字元" }

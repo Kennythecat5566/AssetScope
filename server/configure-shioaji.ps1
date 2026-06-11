@@ -36,8 +36,8 @@ function Set-EnvValue([string[]]$Lines, [string]$Name, [string]$Value) {
 
 $ApiKey = Read-SecretText "Shioaji API Key"
 $SecretKey = Read-SecretText "Shioaji Secret Key"
-if ([string]::IsNullOrWhiteSpace($ApiKey) -or [string]::IsNullOrWhiteSpace($SecretKey)) {
-    throw "API Key and Secret Key cannot be empty."
+if ($ApiKey.Length -lt 10 -or $SecretKey.Length -lt 10) {
+    throw "API Key and Secret Key must each contain at least 10 characters."
 }
 if ($ApiKey.Contains("`r") -or $ApiKey.Contains("`n") -or
     $SecretKey.Contains("`r") -or $SecretKey.Contains("`n")) {
@@ -48,7 +48,8 @@ $Lines = @(Get-Content -LiteralPath $EnvPath -Encoding UTF8)
 $Lines = Set-EnvValue $Lines "ASSETSCOPE_SHIOAJI_ENABLED" "true"
 $Lines = Set-EnvValue $Lines "ASSETSCOPE_SHIOAJI_API_KEY" $ApiKey
 $Lines = Set-EnvValue $Lines "ASSETSCOPE_SHIOAJI_SECRET_KEY" $SecretKey
-$Lines | Set-Content -LiteralPath $EnvPath -Encoding UTF8
+$Utf8WithoutBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllLines($EnvPath, $Lines, $Utf8WithoutBom)
 
 Write-Host "Shioaji settings saved to server/.env."
 Write-Host "AssetScope will load Taiwan stock positions and the settlement account balance."

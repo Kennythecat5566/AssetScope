@@ -24,30 +24,35 @@ def load_shioaji_assets(
     api = api_factory() if api_factory else sj.Shioaji()
     logged_in = False
     try:
-        api.login(
-            api_key=settings.shioaji_api_key,
-            secret_key=settings.shioaji_secret_key,
-            fetch_contract=False,
-            subscribe_trade=False,
-        )
-        logged_in = True
-        stock_account = api.stock_account
-        if stock_account is None:
-            raise RuntimeError("No Shioaji stock account was returned")
-
-        positions = api.list_positions(
-            account=stock_account,
-            unit=sj.Unit.Share,
-        )
-        holdings = [_position_to_holding(position) for position in positions]
-
-        account_balance = api.account_balance(account=stock_account)
-        if account_balance.errmsg:
-            raise RuntimeError(
-                f"Shioaji account balance failed: {account_balance.errmsg}"
+        try:
+            api.login(
+                api_key=settings.shioaji_api_key,
+                secret_key=settings.shioaji_secret_key,
+                fetch_contract=False,
+                subscribe_trade=False,
             )
-        holdings.append(_balance_to_holding(account_balance.acc_balance))
-        return holdings
+            logged_in = True
+            stock_account = api.stock_account
+            if stock_account is None:
+                raise RuntimeError("No Shioaji stock account was returned")
+
+            positions = api.list_positions(
+                account=stock_account,
+                unit=sj.Unit.Share,
+            )
+            holdings = [_position_to_holding(position) for position in positions]
+
+            account_balance = api.account_balance(account=stock_account)
+            if account_balance.errmsg:
+                raise RuntimeError(
+                    f"Shioaji account balance failed: {account_balance.errmsg}"
+                )
+            holdings.append(_balance_to_holding(account_balance.acc_balance))
+            return holdings
+        except RuntimeError:
+            raise
+        except Exception as error:
+            raise RuntimeError(f"Shioaji query failed: {error}") from error
     finally:
         if logged_in:
             api.logout()

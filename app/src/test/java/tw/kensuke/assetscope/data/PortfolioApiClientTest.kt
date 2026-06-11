@@ -6,6 +6,14 @@ import org.junit.Test
 
 class PortfolioApiClientTest {
     @Test
+    fun `handles plain text internal server error`() {
+        assertEquals(
+            "伺服器內部錯誤（HTTP 500），請檢查電腦伺服器",
+            PortfolioApiClient.errorMessage(500, "Internal Server Error"),
+        )
+    }
+
+    @Test
     fun `trims copied token line endings`() {
         assertEquals(
             "assetscope-local-2026-change-this-token",
