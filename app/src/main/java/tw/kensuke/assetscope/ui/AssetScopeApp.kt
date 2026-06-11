@@ -545,7 +545,7 @@ private fun ImportCard(onImport: () -> Unit) {
             Text("匯入資產 CSV", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(6.dp))
             Text(
-                "支援 Firstrade、永豐證券與永豐銀行的標準化持倉資料。匯入會取代目前資料。",
+                "支援標準化持倉資料。你也可以從其他 App 分享 CSV，或在檔案管理器直接用 AssetScope 開啟。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
