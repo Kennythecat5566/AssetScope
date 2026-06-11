@@ -100,7 +100,21 @@ ASSETSCOPE_SHIOAJI_API_KEY=...
 ASSETSCOPE_SHIOAJI_SECRET_KEY=...
 ```
 
-Only the position query is used. No order endpoint is exposed by this server.
+You can store the credentials without showing them in the terminal:
+
+```powershell
+.\configure-shioaji.cmd
+```
+
+Create the API Key and Secret Key in the official SinoPac API management page.
+Enable `Account` and `Production Environment`; trading permission is not
+required. Restrict the key to this PC's IP when practical. Do not enter your
+banking password in this project or send it through chat.
+
+The connector reads Taiwan stock positions in share units, including odd lots,
+and the linked SinoPac stock settlement account balance. It does not call any
+order endpoint. Shioaji cannot read unrelated SinoPac savings or time-deposit
+accounts; those still need an authorized Open Banking provider or a CSV import.
 
 ## Windows Automation
 

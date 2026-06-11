@@ -21,8 +21,8 @@ android {
         applicationId = "tw.kensuke.assetscope"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.2.1"
+        versionCode = 4
+        versionName = "0.2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -39,6 +39,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+            resValue("string", "app_name", "AssetScope Dev")
+        }
         release {
             isMinifyEnabled = true
             if (signingProperties.isNotEmpty()) {

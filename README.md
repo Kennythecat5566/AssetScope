@@ -5,6 +5,16 @@ AssetScope 是一個本機優先的 Android 資產分析 App，用來整合 Firs
 
 GitHub: <https://github.com/Kennythecat5566/AssetScope>
 
+## 安裝簽章衝突
+
+若 Android 顯示「應用程式套件與現有套件衝突」，代表手機曾安裝
+Android Studio 產生的舊 debug APK。請先移除手機上的舊 AssetScope，
+再安裝 GitHub Release 的正式 APK。這是一次性遷移；之後的正式版本
+都使用相同簽章，可直接透過 App 內更新覆蓋安裝。
+
+新版 debug App 使用獨立的 `tw.kensuke.assetscope.debug` 套件名稱與
+`AssetScope Dev` 名稱，因此可與正式版並存，不會再干擾正式更新。
+
 ## 目前功能
 
 - Jetpack Compose 繁中資產總覽

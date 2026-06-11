@@ -10,6 +10,7 @@ def test_portfolio_requires_token(tmp_path: Path) -> None:
     app.dependency_overrides[get_settings] = lambda: Settings(
         api_token="a-long-enough-test-token",
         import_dir=tmp_path,
+        shioaji_enabled=False,
     )
     client = TestClient(app)
 

@@ -3,13 +3,13 @@ from datetime import UTC, datetime
 from app.config import Settings
 from app.connectors.csv_folder import load_csv_folder
 from app.connectors.firstrade_history import load_firstrade_activity
-from app.connectors.shioaji import load_shioaji_positions
+from app.connectors.shioaji import load_shioaji_assets
 from app.models import ExchangeRates, PortfolioResponse
 
 
 def build_portfolio(settings: Settings) -> PortfolioResponse:
     csv_holdings, sources = load_csv_folder(settings.import_dir)
-    shioaji_holdings = load_shioaji_positions(settings)
+    shioaji_holdings = load_shioaji_assets(settings)
     if shioaji_holdings:
         sources.append("shioaji")
 

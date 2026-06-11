@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
+import tw.kensuke.assetscope.BuildConfig
 import tw.kensuke.assetscope.data.AppUpdate
 import tw.kensuke.assetscope.data.AppUpdateManager
 import tw.kensuke.assetscope.data.PortfolioRepository
@@ -121,9 +122,11 @@ fun AssetScopeApp(repository: PortfolioRepository) {
         }
     }
     LaunchedEffect(Unit) {
-        runCatching { updateManager.checkForUpdate() }
-            .onSuccess { availableUpdate = it }
-            .onFailure { updateMessage = it.message }
+        if (!BuildConfig.DEBUG) {
+            runCatching { updateManager.checkForUpdate() }
+                .onSuccess { availableUpdate = it }
+                .onFailure { updateMessage = it.message }
+        }
     }
     LaunchedEffect(updateMessage) {
         updateMessage?.let {
