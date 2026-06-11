@@ -8,4 +8,12 @@ captures/
 .externalNativeBuild/
 .cxx/
 app/build/
-
+server/.venv/
+server/.env
+server/data/imports/*.csv
+!server/data/imports/.gitkeep
+server/data/cache/
+__pycache__/
+*.pyc
+*.egg-info/
+shioaji.log

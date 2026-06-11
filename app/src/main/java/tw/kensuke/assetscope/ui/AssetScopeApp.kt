@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -37,6 +38,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -59,6 +61,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import tw.kensuke.assetscope.data.PortfolioRepository
@@ -143,6 +146,15 @@ fun AssetScopeApp(repository: PortfolioRepository) {
         ) {
             item { TotalAssetCard(state.summary, state.rates.usdToTwd) }
             item {
+                ServerSyncCard(
+                    configuredUrl = state.serverUrl,
+                    defaultUrl = "http://192.168.0.102:8787",
+                    onConnect = viewModel::configureServer,
+                    onSyncNow = viewModel::syncServerNow,
+                    onDisable = viewModel::disableServerSync,
+                )
+            }
+            item {
                 DistributionCard(
                     assetAllocations = state.summary.assetAllocations,
                     institutionAllocations = state.summary.institutionAllocations,
@@ -169,6 +181,106 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 ImportCard(
                     onImport = { csvLauncher.launch(arrayOf("text/*", "text/csv")) },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServerSyncCard(
+    configuredUrl: String?,
+    defaultUrl: String,
+    onConnect: (String, String) -> Unit,
+    onSyncNow: () -> Unit,
+    onDisable: () -> Unit,
+) {
+    var url by rememberSaveable(configuredUrl) {
+        mutableStateOf(configuredUrl ?: defaultUrl)
+    }
+    var token by rememberSaveable { mutableStateOf("") }
+    val isConfigured = configuredUrl != null
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(
+                        "PC SERVER",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text("電腦資產伺服器", style = MaterialTheme.typography.titleMedium)
+                }
+                Icon(
+                    imageVector = Icons.Outlined.Computer,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                if (isConfigured) {
+                    "已連接 $configuredUrl，每 12 小時自動同步。"
+                } else {
+                    "手機與電腦需連接同一個 Wi-Fi。輸入電腦區網網址與 .env 中的 API Token。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!isConfigured) {
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("伺服器網址") },
+                    singleLine = true,
+                    shape = MaterialTheme.shapes.small,
+                )
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = token,
+                    onValueChange = { token = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("API Token") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    shape = MaterialTheme.shapes.small,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = if (isConfigured) onSyncNow else {
+                        { onConnect(url, token) }
+                    },
+                ) {
+                    Icon(Icons.Outlined.Sync, contentDescription = null)
+                    Spacer(Modifier.size(8.dp))
+                    Text(if (isConfigured) "立即同步" else "連接並同步")
+                }
+                if (isConfigured) {
+                    Button(
+                        onClick = onDisable,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    ) {
+                        Text("停用")
+                    }
+                }
             }
         }
     }

@@ -21,6 +21,7 @@ data class PortfolioUiState(
     val rates: ExchangeRates = ExchangeRates(),
     val summary: PortfolioSummary = PortfolioCalculator.calculate(emptyList(), ExchangeRates()),
     val autoSyncFolder: String? = null,
+    val serverUrl: String? = null,
     val message: String? = null,
 )
 
@@ -33,13 +34,15 @@ class PortfolioViewModel(
         repository.holdings,
         repository.exchangeRates,
         repository.autoSyncFolder,
+        repository.serverUrl,
         message,
-    ) { holdings, rates, autoSyncFolder, currentMessage ->
+    ) { holdings, rates, autoSyncFolder, serverUrl, currentMessage ->
         PortfolioUiState(
             holdings = holdings,
             rates = rates,
             summary = PortfolioCalculator.calculate(holdings, rates),
             autoSyncFolder = autoSyncFolder,
+            serverUrl = serverUrl,
             message = currentMessage,
         )
     }.stateIn(
@@ -86,6 +89,35 @@ class PortfolioViewModel(
         viewModelScope.launch {
             repository.disableAutoSync()
             message.value = "已停用資料夾自動同步"
+        }
+    }
+
+    fun configureServer(baseUrl: String, apiToken: String) {
+        viewModelScope.launch {
+            message.value = runCatching {
+                val result = repository.configureServer(baseUrl, apiToken)
+                "電腦同步已啟用，取得 ${result.importedCount} 筆資產"
+            }.getOrElse { error ->
+                error.message ?: "無法連接電腦伺服器"
+            }
+        }
+    }
+
+    fun syncServerNow() {
+        viewModelScope.launch {
+            message.value = runCatching {
+                val result = repository.syncFromServer()
+                "已從 ${result.sourceCount} 個來源同步 ${result.importedCount} 筆"
+            }.getOrElse { error ->
+                error.message ?: "電腦同步失敗"
+            }
+        }
+    }
+
+    fun disableServerSync() {
+        viewModelScope.launch {
+            repository.disableServerSync()
+            message.value = "已停用電腦伺服器同步"
         }
     }
 

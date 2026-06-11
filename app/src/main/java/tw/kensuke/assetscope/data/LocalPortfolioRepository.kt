@@ -3,8 +3,10 @@ package tw.kensuke.assetscope.data
 import android.content.Context
 import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import tw.kensuke.assetscope.domain.model.AssetType
@@ -19,8 +21,13 @@ class LocalPortfolioRepository(
     private val appContext = context.applicationContext
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val mutableHoldings = MutableStateFlow(loadHoldings())
-    private val mutableExchangeRates = MutableStateFlow(ExchangeRates())
+    private val mutableExchangeRates = MutableStateFlow(
+        ExchangeRates(
+            usdToTwd = preferences.getFloat(KEY_USD_TO_TWD, 32.4f).toDouble(),
+        ),
+    )
     private val mutableAutoSyncFolder = MutableStateFlow(preferences.getString(KEY_SYNC_FOLDER, null))
+    private val mutableServerUrl = MutableStateFlow(preferences.getString(KEY_SERVER_URL, null))
     private val preferenceListener =
         android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
@@ -28,12 +35,14 @@ class LocalPortfolioRepository(
                 KEY_SYNC_FOLDER -> {
                     mutableAutoSyncFolder.value = preferences.getString(KEY_SYNC_FOLDER, null)
                 }
+                KEY_SERVER_URL -> mutableServerUrl.value = preferences.getString(KEY_SERVER_URL, null)
             }
         }
 
     override val holdings: StateFlow<List<Holding>> = mutableHoldings
     override val exchangeRates: StateFlow<ExchangeRates> = mutableExchangeRates
     override val autoSyncFolder: StateFlow<String?> = mutableAutoSyncFolder
+    override val serverUrl: StateFlow<String?> = mutableServerUrl
 
     init {
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
@@ -81,6 +90,61 @@ class LocalPortfolioRepository(
         preferences.edit().remove(KEY_SYNC_FOLDER).apply()
         mutableAutoSyncFolder.value = null
         AutoSyncWorker.cancel(appContext)
+    }
+
+    override suspend fun configureServer(
+        baseUrl: String,
+        apiToken: String,
+    ): ServerSyncResult = withContext(Dispatchers.IO) {
+        require(apiToken.length >= 16) { "API Token 至少需要 16 個字元" }
+        val normalizedUrl = baseUrl.trim().trimEnd('/')
+        val remote = PortfolioApiClient().fetch(normalizedUrl, apiToken)
+        require(remote.holdings.isNotEmpty()) { "伺服器目前沒有資產資料" }
+
+        preferences.edit()
+            .putString(KEY_SERVER_URL, normalizedUrl)
+            .putString(KEY_SERVER_TOKEN, apiToken)
+            .apply()
+        mutableServerUrl.value = normalizedUrl
+        applyRemotePortfolio(remote)
+        ServerSyncWorker.schedule(appContext)
+        ServerSyncResult(
+            importedCount = remote.holdings.size,
+            sourceCount = remote.sourceCount,
+        )
+    }
+
+    override suspend fun syncFromServer(): ServerSyncResult = withContext(Dispatchers.IO) {
+        val baseUrl = preferences.getString(KEY_SERVER_URL, null)
+            ?: error("尚未設定電腦伺服器")
+        val token = preferences.getString(KEY_SERVER_TOKEN, null)
+            ?: error("尚未設定 API Token")
+        val remote = PortfolioApiClient().fetch(baseUrl, token)
+        require(remote.holdings.isNotEmpty()) { "伺服器目前沒有資產資料" }
+
+        applyRemotePortfolio(remote)
+        ServerSyncResult(
+            importedCount = remote.holdings.size,
+            sourceCount = remote.sourceCount,
+        )
+    }
+
+    private fun applyRemotePortfolio(remote: RemotePortfolio) {
+        mutableHoldings.value = remote.holdings
+        mutableExchangeRates.value = remote.rates
+        saveHoldings(remote.holdings)
+        preferences.edit()
+            .putFloat(KEY_USD_TO_TWD, remote.rates.usdToTwd.toFloat())
+            .apply()
+    }
+
+    override suspend fun disableServerSync() {
+        preferences.edit()
+            .remove(KEY_SERVER_URL)
+            .remove(KEY_SERVER_TOKEN)
+            .apply()
+        mutableServerUrl.value = null
+        ServerSyncWorker.cancel(appContext)
     }
 
     override suspend fun resetToSampleData() {
@@ -134,6 +198,9 @@ class LocalPortfolioRepository(
         const val PREFERENCES_NAME = "asset_scope_portfolio"
         const val KEY_HOLDINGS = "holdings"
         const val KEY_SYNC_FOLDER = "sync_folder"
+        const val KEY_SERVER_URL = "server_url"
+        const val KEY_SERVER_TOKEN = "server_token"
+        const val KEY_USD_TO_TWD = "usd_to_twd"
 
         val sampleHoldings = listOf(
             Holding(
