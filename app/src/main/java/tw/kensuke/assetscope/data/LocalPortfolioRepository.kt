@@ -1,0 +1,136 @@
+package tw.kensuke.assetscope.data
+
+import android.content.Context
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import org.json.JSONArray
+import org.json.JSONObject
+import tw.kensuke.assetscope.domain.model.AssetType
+import tw.kensuke.assetscope.domain.model.Currency
+import tw.kensuke.assetscope.domain.model.ExchangeRates
+import tw.kensuke.assetscope.domain.model.Holding
+import tw.kensuke.assetscope.domain.model.Institution
+
+class LocalPortfolioRepository(
+    context: Context,
+) : PortfolioRepository {
+    private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    private val mutableHoldings = MutableStateFlow(loadHoldings())
+    private val mutableExchangeRates = MutableStateFlow(ExchangeRates())
+
+    override val holdings: StateFlow<List<Holding>> = mutableHoldings
+    override val exchangeRates: StateFlow<ExchangeRates> = mutableExchangeRates
+
+    override suspend fun importCsv(content: String): ImportResult {
+        val (imported, skipped) = CsvHoldingParser.parse(content)
+        if (imported.isNotEmpty()) {
+            mutableHoldings.value = imported
+            saveHoldings(imported)
+        }
+        return ImportResult(importedCount = imported.size, skippedCount = skipped)
+    }
+
+    override suspend fun resetToSampleData() {
+        mutableHoldings.value = sampleHoldings
+        saveHoldings(sampleHoldings)
+    }
+
+    private fun loadHoldings(): List<Holding> {
+        val stored = preferences.getString(KEY_HOLDINGS, null) ?: return sampleHoldings
+        return runCatching {
+            val array = JSONArray(stored)
+            List(array.length()) { index ->
+                array.getJSONObject(index).toHolding()
+            }
+        }.getOrDefault(sampleHoldings)
+    }
+
+    private fun saveHoldings(holdings: List<Holding>) {
+        val array = JSONArray()
+        holdings.forEach { array.put(it.toJson()) }
+        preferences.edit().putString(KEY_HOLDINGS, array.toString()).apply()
+    }
+
+    private fun Holding.toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("institution", institution.name)
+        put("accountName", accountName)
+        put("symbol", symbol)
+        put("name", name)
+        put("assetType", assetType.name)
+        put("currency", currency.name)
+        put("quantity", quantity)
+        put("averageCost", averageCost)
+        put("marketPrice", marketPrice)
+    }
+
+    private fun JSONObject.toHolding(): Holding = Holding(
+        id = getString("id"),
+        institution = Institution.valueOf(getString("institution")),
+        accountName = getString("accountName"),
+        symbol = getString("symbol"),
+        name = getString("name"),
+        assetType = AssetType.valueOf(getString("assetType")),
+        currency = Currency.valueOf(getString("currency")),
+        quantity = getDouble("quantity"),
+        averageCost = getDouble("averageCost"),
+        marketPrice = getDouble("marketPrice"),
+    )
+
+    private companion object {
+        const val PREFERENCES_NAME = "asset_scope_portfolio"
+        const val KEY_HOLDINGS = "holdings"
+
+        val sampleHoldings = listOf(
+            Holding(
+                id = "ft-vti",
+                institution = Institution.FIRSTRade,
+                accountName = "Firstrade 個人帳戶",
+                symbol = "VTI",
+                name = "Vanguard Total Stock Market ETF",
+                assetType = AssetType.ETF,
+                currency = Currency.USD,
+                quantity = 35.0,
+                averageCost = 242.5,
+                marketPrice = 291.3,
+            ),
+            Holding(
+                id = "ft-aapl",
+                institution = Institution.FIRSTRade,
+                accountName = "Firstrade 個人帳戶",
+                symbol = "AAPL",
+                name = "Apple",
+                assetType = AssetType.STOCK,
+                currency = Currency.USD,
+                quantity = 20.0,
+                averageCost = 178.0,
+                marketPrice = 198.7,
+            ),
+            Holding(
+                id = "sp-0050",
+                institution = Institution.SINOPAC_SECURITIES,
+                accountName = "永豐證券",
+                symbol = "0050",
+                name = "元大台灣50",
+                assetType = AssetType.ETF,
+                currency = Currency.TWD,
+                quantity = 2_000.0,
+                averageCost = 161.2,
+                marketPrice = 185.4,
+            ),
+            Holding(
+                id = "bank-twd",
+                institution = Institution.SINOPAC_BANK,
+                accountName = "DAWHO",
+                symbol = "TWD",
+                name = "新台幣活存",
+                assetType = AssetType.DEPOSIT,
+                currency = Currency.TWD,
+                quantity = 1.0,
+                averageCost = 280_000.0,
+                marketPrice = 280_000.0,
+            ),
+        )
+    }
+}
+

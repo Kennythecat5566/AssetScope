@@ -1,0 +1,5 @@
+institution,account,symbol,name,type,currency,quantity,average_cost,market_price
+firstrade,Firstrade 個人帳戶,VTI,Vanguard Total Stock Market ETF,ETF,USD,35,242.5,291.3
+永豐證券,永豐證券,0050,元大台灣50,ETF,TWD,2000,161.2,185.4
+永豐銀行,DAWHO,TWD,新台幣活存,DEPOSIT,TWD,1,280000,280000
+
