@@ -92,6 +92,15 @@ D:\AppDev\server\capture-firstrade-normal-browser.cmd
 若自動化瀏覽器顯示參考代碼 `2192`，請勿反覆嘗試。新版流程會使用你平常的瀏覽器登入，
 程式只監控 Windows 下載資料夾的新 CSV，不會讀取帳密、Cookie 或 MFA。
 
+登入成功後仍需在網頁中操作：
+
+```text
+我的帳戶 → 稅務中心（Tax Center）
+→ Download Account Information → Excel CSV Files → Download
+```
+
+終端停在「正在監控」是正常狀態，下載完成後才會繼續。
+
 目前電腦區網位址為 `192.168.0.102`，Android App 中可設定：
 
 ```text

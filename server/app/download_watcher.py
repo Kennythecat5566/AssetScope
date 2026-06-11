@@ -21,23 +21,31 @@ def capture_next_csv(
 
     started_at = time.time()
     existing = {
-        path.resolve()
+        path.resolve(): (path.stat().st_mtime_ns, path.stat().st_size)
         for path in downloads_dir.iterdir()
-        if path.is_file()
+        if path.is_file() and path.suffix.lower() in CSV_SUFFIXES
     }
-    print(f"Watching for a new CSV in: {downloads_dir}")
-    print("Use your normal browser to sign in to the official Firstrade website.")
-    print("Complete MFA and download the CSV. Do not share your password.")
+    print(f"正在監控新的 CSV：{downloads_dir}")
+    print("請在已登入的 Firstrade 頁面依序操作：")
+    print("  1. 我的帳戶")
+    print("  2. 稅務中心（Tax Center）")
+    print("  3. Download Account Information")
+    print("  4. Excel CSV Files")
+    print("  5. 選擇帳戶與日期範圍，按 Download")
+    print("下載完成後程式會自動複製檔案，現在保持此視窗開啟即可。")
 
     while time.time() - started_at < timeout_seconds:
-        candidates = [
-            path
-            for path in downloads_dir.iterdir()
-            if path.is_file()
-            and path.resolve() not in existing
-            and path.suffix.lower() in CSV_SUFFIXES
-            and not path.name.endswith((".crdownload", ".part", ".tmp"))
-        ]
+        candidates = []
+        for path in downloads_dir.iterdir():
+            if (
+                not path.is_file()
+                or path.suffix.lower() not in CSV_SUFFIXES
+                or path.name.endswith((".crdownload", ".part", ".tmp"))
+            ):
+                continue
+            current = (path.stat().st_mtime_ns, path.stat().st_size)
+            if existing.get(path.resolve()) != current:
+                candidates.append(path)
         if candidates:
             newest = max(candidates, key=lambda path: path.stat().st_mtime)
             return _copy_when_complete(newest, destination_dir)
@@ -88,4 +96,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

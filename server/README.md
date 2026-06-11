@@ -54,6 +54,16 @@ Files`, and click `Download`.
 The watcher only reads the newly downloaded CSV. It cannot see passwords,
 cookies, page contents, or MFA codes.
 
+After login, the watcher intentionally does not click inside Firstrade. Use:
+
+```text
+我的帳戶 > 稅務中心 (Tax Center)
+> Download Account Information > Excel CSV Files > Download
+```
+
+Keep the terminal open while downloading. It detects both newly created CSV
+files and an existing CSV that the browser overwrites.
+
 Raw files are stored in `data/raw/firstrade`, which is excluded from Git.
 Never send account passwords in chat or place them in `.env`.
 
