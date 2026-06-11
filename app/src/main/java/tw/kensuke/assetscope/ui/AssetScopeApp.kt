@@ -6,6 +6,7 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +42,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -102,12 +104,19 @@ fun AssetScopeApp(repository: PortfolioRepository) {
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                ),
                 title = {
                     Column {
-                        Text("AssetScope", fontWeight = FontWeight.Bold)
                         Text(
-                            text = "跨境資產總覽",
-                            style = MaterialTheme.typography.labelMedium,
+                            text = "ASSET SCOPE",
+                            style = MaterialTheme.typography.titleMedium,
+                            letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified,
+                        )
+                        Text(
+                            text = "暮らしと資産 · 跨境資產總覽",
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -124,8 +133,13 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 18.dp,
+                top = 12.dp,
+                end = 18.dp,
+                bottom = 36.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             item { TotalAssetCard(state.summary, state.rates.usdToTwd) }
             item {
@@ -169,9 +183,11 @@ private fun AutoSyncCard(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
@@ -181,7 +197,13 @@ private fun AutoSyncCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("資料夾自動同步", fontWeight = FontWeight.Bold)
+                    Text(
+                        "AUTO SYNC",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text("資料夾自動同步", style = MaterialTheme.typography.titleMedium)
                     Text(
                         if (enabled) "已啟用，每 12 小時檢查最新 CSV" else "尚未連接資料夾",
                         style = MaterialTheme.typography.bodySmall,
@@ -238,22 +260,26 @@ private fun AutoSyncCard(
 private fun TotalAssetCard(summary: PortfolioSummary, usdToTwd: Double) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
-        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+        ),
+        shape = MaterialTheme.shapes.extraLarge,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(modifier = Modifier.padding(24.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp)) {
             Text(
-                text = "總資產淨值",
-                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.75f),
+                text = "TOTAL BALANCE  /  總資產淨值",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.68f),
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(12.dp))
             Text(
                 text = summary.totalValueTwd.asTwd(),
                 style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onPrimary,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(28.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -261,17 +287,17 @@ private fun TotalAssetCard(summary: PortfolioSummary, usdToTwd: Double) {
                 Metric(
                     label = "未實現損益",
                     value = summary.unrealizedProfitTwd.asSignedTwd(),
-                    light = true,
+                    light = false,
                 )
                 Metric(
                     label = "報酬率",
                     value = summary.returnRate.asPercent(),
-                    light = true,
+                    light = false,
                 )
                 Metric(
                     label = "USD/TWD",
                     value = "%.2f".format(usdToTwd),
-                    light = true,
+                    light = false,
                 )
             }
         }
@@ -294,7 +320,10 @@ private fun DistributionCard(
     val colors = allocationColors
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             SectionHeader("資產分布", "以新台幣計價")
@@ -368,6 +397,7 @@ private fun DistributionToggle(
 ) {
     Button(
         onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = if (selected) {
                 MaterialTheme.colorScheme.primary
@@ -434,13 +464,16 @@ private fun HoldingRow(holding: Holding) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .background(MaterialTheme.colorScheme.secondaryContainer, CircleShape),
+                        .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -495,12 +528,21 @@ private fun HoldingRow(holding: Holding) {
 private fun ImportCard(onImport: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
+            containerColor = MaterialTheme.colorScheme.surface,
         ),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text("匯入資產 CSV", fontWeight = FontWeight.Bold)
+            Text(
+                "IMPORT",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text("匯入資產 CSV", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(6.dp))
             Text(
                 "支援 Firstrade、永豐證券與永豐銀行的標準化持倉資料。匯入會取代目前資料。",
@@ -581,17 +623,17 @@ private fun Double.asSignedMoney(currency: Currency): String =
 private fun Double.asQuantity(): String =
     if (this % 1.0 == 0.0) "%,.0f".format(this) else "%,.2f".format(this)
 
-private val profitColor = Color(0xFFB3261E)
-private val lossColor = Color(0xFF126B45)
+private val profitColor = Color(0xFF9A5D50)
+private val lossColor = Color(0xFF627066)
 private val allocationColors = listOf(
-    Color(0xFF2F6B4F),
-    Color(0xFFE0A53B),
-    Color(0xFF718FA4),
-    Color(0xFF9A6FB0),
-    Color(0xFFD06B55),
-    Color(0xFF4D9A9A),
-    Color(0xFFB4864B),
-    Color(0xFF6574A8),
+    Color(0xFF6F7965),
+    Color(0xFFB68468),
+    Color(0xFF8D9A9A),
+    Color(0xFFC0A879),
+    Color(0xFF9B8790),
+    Color(0xFF8FA08C),
+    Color(0xFFC28D7A),
+    Color(0xFF7F8998),
 )
 
 private enum class DistributionView {
