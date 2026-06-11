@@ -3,6 +3,8 @@
 AssetScope 是一個本機優先的 Android 資產分析 App，用來整合 Firstrade、永豐證券與
 永豐銀行資產，並以新台幣呈現跨境投資組合。
 
+GitHub: <https://github.com/Kennythecat5566/AssetScope>
+
 ## 目前功能
 
 - Jetpack Compose 繁中資產總覽
@@ -16,6 +18,7 @@ AssetScope 是一個本機優先的 Android 資產分析 App，用來整合 Firs
 - Android SAF 授權資料夾與每 12 小時背景同步
 - 電腦端 FastAPI 唯讀伺服器與 Token 驗證
 - Android 區網伺服器同步與背景更新
+- GitHub Release 自動更新檢查與 APK 安裝流程
 - 純 Kotlin 資產計算與 CSV parser 單元測試
 
 ## 開發環境
@@ -56,6 +59,19 @@ server/
 
 App 不保存金融機構密碼，也不以 WebView 或網頁爬蟲模擬登入。後續串接永豐證券
 Shioaji 時，應由獨立後端保管 API 憑證並提供唯讀同步。
+
+## App 更新
+
+App 啟動時會檢查 GitHub 最新 Release。發現新版本後顯示更新卡，下載完成會開啟
+Android 系統安裝確認畫面。Android 不允許一般 App 靜默安裝 APK；首次更新時可能
+需要允許 AssetScope「安裝未知應用程式」。
+
+推送版本標籤即可建立 Release：
+
+```powershell
+git tag v0.2.0
+git push origin v0.2.0
+```
 
 ## 自動同步限制
 

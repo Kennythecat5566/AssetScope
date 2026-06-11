@@ -1,0 +1,49 @@
+name: Release APK
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore release signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 --decode > assetscope-release.jks
+          cat > release-signing.properties <<EOF
+          storeFile=assetscope-release.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+
+      - name: Test and build signed release
+        run: ./gradlew test lintRelease assembleRelease
+
+      - name: Prepare APK
+        run: cp app/build/outputs/apk/release/app-release.apk AssetScope-${GITHUB_REF_NAME}.apk
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: AssetScope-${{ github.ref_name }}.apk
+

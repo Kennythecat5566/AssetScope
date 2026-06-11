@@ -1,7 +1,10 @@
 package tw.kensuke.assetscope.ui
 
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,6 +32,7 @@ import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -46,10 +50,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
@@ -63,7 +69,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
+import tw.kensuke.assetscope.data.AppUpdate
+import tw.kensuke.assetscope.data.AppUpdateManager
 import tw.kensuke.assetscope.data.PortfolioRepository
 import tw.kensuke.assetscope.domain.model.Allocation
 import tw.kensuke.assetscope.domain.model.Currency
@@ -81,6 +91,11 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     val viewModel: PortfolioViewModel = viewModel(factory = PortfolioViewModel.factory(repository))
     val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val updateManager = remember { AppUpdateManager(context) }
+    val coroutineScope = rememberCoroutineScope()
+    var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
+    var updateDownloadId by remember { mutableStateOf<Long?>(null) }
+    var updateMessage by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val csvLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -104,6 +119,38 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             snackbarHostState.showSnackbar(it)
             viewModel.clearMessage()
         }
+    }
+    LaunchedEffect(Unit) {
+        runCatching { updateManager.checkForUpdate() }
+            .onSuccess { availableUpdate = it }
+            .onFailure { updateMessage = it.message }
+    }
+    LaunchedEffect(updateMessage) {
+        updateMessage?.let {
+            snackbarHostState.showSnackbar(it)
+            updateMessage = null
+        }
+    }
+    DisposableEffect(updateDownloadId) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val completedId = intent?.getLongExtra(
+                    DownloadManager.EXTRA_DOWNLOAD_ID,
+                    -1L,
+                )
+                if (completedId != null && completedId == updateDownloadId) {
+                    runCatching { updateManager.openInstaller(completedId) }
+                        .onFailure { updateMessage = it.message ?: "無法開啟更新安裝程式" }
+                }
+            }
+        }
+        ContextCompat.registerReceiver(
+            context,
+            receiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        onDispose { context.unregisterReceiver(receiver) }
     }
 
     Scaffold(
@@ -148,6 +195,26 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             item { TotalAssetCard(state.summary, state.rates.usdToTwd) }
+            availableUpdate?.let { update ->
+                item {
+                    AppUpdateCard(
+                        update = update,
+                        isDownloading = updateDownloadId != null,
+                        onDownload = {
+                            coroutineScope.launch {
+                                runCatching { updateManager.download(update) }
+                                    .onSuccess {
+                                        updateDownloadId = it
+                                        updateMessage = "已開始下載 ${update.versionName}"
+                                    }
+                                    .onFailure {
+                                        updateMessage = it.message ?: "無法下載更新"
+                                    }
+                            }
+                        },
+                    )
+                }
+            }
             if (state.transactions.isNotEmpty()) {
                 item { PerformanceCard(state.performance) }
             }
@@ -195,6 +262,71 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 ImportCard(
                     onImport = { csvLauncher.launch(arrayOf("text/*", "text/csv")) },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppUpdateCard(
+    update: AppUpdate,
+    isDownloading: Boolean,
+    onDownload: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.secondary),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+        ),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(
+                        "APP UPDATE",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "新版本 ${update.versionName}",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                }
+                Icon(
+                    Icons.Outlined.SystemUpdate,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.secondary,
+                )
+            }
+            if (update.releaseNotes.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    update.releaseNotes,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(Modifier.height(16.dp))
+            Button(
+                onClick = onDownload,
+                enabled = !isDownloading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondary,
+                ),
+            ) {
+                Icon(Icons.Outlined.SystemUpdate, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text(if (isDownloading) "下載中" else "下載並安裝")
             }
         }
     }

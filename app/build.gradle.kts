@@ -1,7 +1,16 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
+}
+
+val signingProperties = Properties().apply {
+    val file = rootProject.file("release-signing.properties")
+    if (file.exists()) {
+        file.inputStream().use(::load)
+    }
 }
 
 android {
@@ -12,15 +21,29 @@ android {
         applicationId = "tw.kensuke.assetscope"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    signingConfigs {
+        create("release") {
+            if (signingProperties.isNotEmpty()) {
+                storeFile = rootProject.file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
+            if (signingProperties.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -40,6 +63,14 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    defaultConfig {
+        buildConfigField(
+            "String",
+            "GITHUB_REPOSITORY",
+            "\"Kennythecat5566/AssetScope\"",
+        )
     }
 
     packaging {

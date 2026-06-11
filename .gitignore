@@ -8,6 +8,9 @@ captures/
 .externalNativeBuild/
 .cxx/
 app/build/
+release-signing.properties
+*.jks
+*.keystore
 server/.venv/
 server/.env
 server/data/imports/*.csv
