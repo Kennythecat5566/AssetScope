@@ -56,6 +56,19 @@ Only the position query is used. No order endpoint is exposed by this server.
 Run `install-startup-task.ps1` once to start the API at Windows sign-in.
 
 If the phone cannot connect, change the active Wi-Fi network profile to
-`Private`, then run `allow-firewall.ps1` once in Administrator PowerShell.
-The firewall rule only permits TCP 8787 from the local subnet.
+`Private`, then run:
 
+```powershell
+.\allow-firewall.cmd
+```
+
+Accept the Windows administrator prompt. This bypasses the PowerShell script
+policy for this process only and does not change the machine-wide policy.
+
+Alternatively, from Administrator PowerShell:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\allow-firewall.ps1
+```
+
+The firewall rule only permits TCP 8787 from the local subnet.

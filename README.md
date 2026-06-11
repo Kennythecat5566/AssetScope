@@ -84,6 +84,14 @@ http://192.168.0.102:8787
 API Token 必須與 `server/.env` 的 `ASSETSCOPE_API_TOKEN` 相同。手機與電腦需在
 同一個 Wi-Fi。HTTP 只允許私人區網；若未來從外網存取，必須架設 HTTPS。
 
+若 PowerShell 顯示「已停用指令碼執行」，請執行：
+
+```powershell
+D:\AppDev\server\allow-firewall.cmd
+```
+
+並接受 Windows 系統管理員權限提示。這不會永久修改系統的指令碼執行政策。
+
 ## 建議匯入流程
 
 ### 分享至 AssetScope
