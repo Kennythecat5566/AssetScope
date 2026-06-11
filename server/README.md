@@ -7,13 +7,13 @@ portfolio data to the Android app.
 
 ```powershell
 cd D:\AppDev\server
-.\setup.ps1
+.\setup.cmd
 ```
 
 Edit `.env` and replace `ASSETSCOPE_API_TOKEN` with a long random value. Then:
 
 ```powershell
-.\start.ps1
+.\start.cmd
 ```
 
 The API listens on `http://0.0.0.0:8787`. On the current network, the Android
@@ -53,7 +53,14 @@ Only the position query is used. No order endpoint is exposed by this server.
 
 ## Windows Automation
 
-Run `install-startup-task.ps1` once to start the API at Windows sign-in.
+Run this once to start the API at Windows sign-in:
+
+```powershell
+.\install-startup-task.cmd
+```
+
+The `.cmd` launchers use `ExecutionPolicy Bypass` for their own process only.
+They do not change the machine-wide PowerShell policy.
 
 If the phone cannot connect, change the active Wi-Fi network profile to
 `Private`, then run:

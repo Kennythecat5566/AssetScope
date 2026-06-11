@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 $ServerRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PowerShell = (Get-Command powershell.exe).Source
-$Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$ServerRoot\start.ps1`""
+$Arguments = "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$ServerRoot\start.ps1`""
 
 $Action = New-ScheduledTaskAction `
     -Execute $PowerShell `
@@ -22,4 +22,3 @@ Register-ScheduledTask `
     -Force
 
 Write-Host "AssetScope Server will start when $env:USERNAME signs in."
-
