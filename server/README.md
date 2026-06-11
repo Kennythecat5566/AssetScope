@@ -64,6 +64,11 @@ After login, the watcher intentionally does not click inside Firstrade. Use:
 Keep the terminal open while downloading. It detects both newly created CSV
 files and an existing CSV that the browser overwrites.
 
+After download, the transaction history is automatically converted to
+`data/imports/firstrade.csv`. Current quantity and moving-average cost are
+rebuilt from BUY/SELL records. Because this export does not contain live
+quotes, `market_price` temporarily uses the latest transaction price.
+
 Raw files are stored in `data/raw/firstrade`, which is excluded from Git.
 Never send account passwords in chat or place them in `.env`.
 

@@ -101,6 +101,9 @@ D:\AppDev\server\capture-firstrade-normal-browser.cmd
 
 終端停在「正在監控」是正常狀態，下載完成後才會繼續。
 
+下載後會自動產生 `server/data/imports/firstrade.csv`。由於 Firstrade 交易歷史檔
+不包含即時行情，目前市價暫用最近成交價；手機需在「PC SERVER」按一次「立即同步」。
+
 目前電腦區網位址為 `192.168.0.102`，Android App 中可設定：
 
 ```text

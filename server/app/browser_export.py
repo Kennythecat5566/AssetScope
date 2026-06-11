@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from playwright.sync_api import Download, sync_playwright
+from app.connectors.firstrade_history import convert_firstrade_history
 
 FIRSTRADE_HOME = "https://www.firstrade.com/"
 MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024
@@ -57,7 +58,9 @@ def _save_download(download: Download, raw_dir: Path) -> Path:
     destination = raw_dir / f"{timestamp}-{suggested_name}"
     shutil.copy2(temporary_path, destination)
     print(f"Saved Firstrade export to: {destination}")
-    print("This raw export still needs a Firstrade-specific converter.")
+    normalized = raw_dir.parents[1] / "imports" / "firstrade.csv"
+    count = convert_firstrade_history(destination, normalized)
+    print(f"Converted {count} holdings to: {normalized}")
     return destination
 
 
@@ -81,4 +84,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

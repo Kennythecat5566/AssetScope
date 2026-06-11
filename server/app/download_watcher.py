@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from app.browser_export import MAX_DOWNLOAD_BYTES, _safe_filename
+from app.connectors.firstrade_history import convert_firstrade_history
 
 CSV_SUFFIXES = {".csv", ".txt"}
 
@@ -72,6 +73,10 @@ def _copy_when_complete(source: Path, destination_dir: Path) -> Path:
     destination = destination_dir / f"{timestamp}-{_safe_filename(source.name)}"
     shutil.copy2(source, destination)
     print(f"Saved Firstrade export to: {destination}")
+    normalized = destination_dir.parents[1] / "imports" / "firstrade.csv"
+    count = convert_firstrade_history(destination, normalized)
+    print(f"Converted {count} holdings to: {normalized}")
+    print("Open AssetScope on your phone and tap PC SERVER > 立即同步.")
     return destination
 
 

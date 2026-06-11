@@ -16,11 +16,17 @@ def test_rejects_missing_download_folder(tmp_path: Path) -> None:
 
 def test_copies_completed_csv(tmp_path: Path) -> None:
     source = tmp_path / "Account Export.csv"
-    source.write_text("header\nvalue\n", encoding="utf-8")
+    source.write_text(
+        "Symbol,Quantity,Price,Action,Description,TradeDate,SettledDate,"
+        "Interest,Amount,Commission,Fee,CUSIP,RecordType\n"
+        "VTI,1,100,BUY,Vanguard ETF,2026-01-01,2026-01-02,"
+        "0,-100,0,0,,Trade\n",
+        encoding="utf-8",
+    )
     destination_dir = tmp_path / "raw"
     destination_dir.mkdir()
 
     destination = _copy_when_complete(source, destination_dir)
 
     assert destination.name.endswith("-Account_Export.csv")
-    assert destination.read_text(encoding="utf-8") == "header\nvalue\n"
+    assert destination.read_text(encoding="utf-8") == source.read_text(encoding="utf-8")
