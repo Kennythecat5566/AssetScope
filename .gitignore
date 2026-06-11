@@ -13,6 +13,8 @@ server/.env
 server/data/imports/*.csv
 !server/data/imports/.gitkeep
 server/data/cache/
+server/data/raw/
+server/browser-profiles/
 __pycache__/
 *.pyc
 *.egg-info/

@@ -36,6 +36,27 @@ file on each request, so replacing a file does not require a restart.
 Do not use duplicate account/symbol rows across files. A sample format is in
 `..\samples\holdings-template.csv`.
 
+## Browser-Assisted Firstrade Export
+
+Run:
+
+```powershell
+.\capture-firstrade.cmd
+```
+
+AssetScope opens a dedicated Microsoft Edge profile. Enter your Firstrade
+credentials and MFA only inside that official browser window, then navigate to
+`Accounts > Tax Center > Download Account Information`, choose `Excel CSV
+Files`, and click `Download`.
+
+The login profile is stored in `browser-profiles/firstrade`, and raw files are
+stored in `data/raw/firstrade`. Both locations are excluded from Git. Never
+send account passwords in chat or place them in `.env`.
+
+The raw Firstrade CSV is not copied directly to `data/imports`, because its
+columns differ from AssetScope's normalized holdings schema. After capturing
+one export, a Firstrade-specific converter can transform it automatically.
+
 ## Shioaji
 
 Install the optional package:

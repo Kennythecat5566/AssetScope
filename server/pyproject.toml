@@ -21,6 +21,9 @@ dev = [
 shioaji = [
     "shioaji>=1.2,<2",
 ]
+browser = [
+    "playwright>=1.52,<2",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
@@ -28,4 +31,3 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
-

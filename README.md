@@ -83,6 +83,15 @@ D:\AppDev\server\install-startup-task.cmd
 
 `start.cmd` 可以重複執行；若伺服器已在 `8787` 執行，會直接顯示已啟動，不會再建立第二份程序。
 
+Firstrade 瀏覽器輔助匯出：
+
+```powershell
+D:\AppDev\server\capture-firstrade.cmd
+```
+
+請只在程式開啟的 Firstrade 官方瀏覽器頁面輸入帳密與 MFA，不要將金融帳密貼到對話、
+`.env` 或程式碼。登入狀態及原始下載檔只保存在本機且不納入 Git。
+
 目前電腦區網位址為 `192.168.0.102`，Android App 中可設定：
 
 ```text

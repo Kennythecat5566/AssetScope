@@ -6,7 +6,7 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
     python -m venv .venv
 }
 
-& ".venv\Scripts\python.exe" -m pip install -e ".[dev]"
+& ".venv\Scripts\python.exe" -m pip install -e ".[dev,browser]"
 
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
@@ -14,4 +14,3 @@ if (-not (Test-Path ".env")) {
 }
 
 Write-Host "AssetScope server setup is complete."
-
