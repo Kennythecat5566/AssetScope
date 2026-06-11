@@ -24,6 +24,7 @@ data class RemotePortfolio(
 class PortfolioApiClient {
     fun fetch(baseUrl: String, apiToken: String): RemotePortfolio {
         val normalizedUrl = validateAndNormalizeBaseUrl(baseUrl)
+        val normalizedToken = normalizeApiToken(apiToken)
         val connection = URI("$normalizedUrl/api/v1/portfolio")
             .toURL()
             .openConnection() as HttpURLConnection
@@ -33,7 +34,7 @@ class PortfolioApiClient {
             connection.connectTimeout = 8_000
             connection.readTimeout = 15_000
             connection.setRequestProperty("Accept", "application/json")
-            connection.setRequestProperty("Authorization", "Bearer $apiToken")
+            connection.setRequestProperty("Authorization", "Bearer $normalizedToken")
 
             val status = connection.responseCode
             val body = (if (status in 200..299) connection.inputStream else connection.errorStream)
@@ -125,6 +126,17 @@ class PortfolioApiClient {
             }
         }
         return normalized
+    }
+
+    companion object {
+        fun normalizeApiToken(value: String): String {
+            val normalized = value.trim()
+            require(normalized.length >= 16) { "API Token 至少需要 16 個字元" }
+            require(normalized.none(Char::isISOControl)) {
+                "API Token 含有無效的換行或控制字元，請重新貼上"
+            }
+            return normalized
+        }
     }
 
     private fun isPrivateHost(host: String): Boolean {

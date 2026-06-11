@@ -439,7 +439,7 @@ private fun ServerSyncCard(
                 Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = token,
-                    onValueChange = { token = it },
+                    onValueChange = { token = it.replace("\r", "").replace("\n", "") },
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("API Token") },
                     singleLine = true,

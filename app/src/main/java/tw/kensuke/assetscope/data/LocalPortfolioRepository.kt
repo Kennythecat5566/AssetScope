@@ -99,14 +99,14 @@ class LocalPortfolioRepository(
         baseUrl: String,
         apiToken: String,
     ): ServerSyncResult = withContext(Dispatchers.IO) {
-        require(apiToken.length >= 16) { "API Token 至少需要 16 個字元" }
+        val normalizedToken = PortfolioApiClient.normalizeApiToken(apiToken)
         val normalizedUrl = baseUrl.trim().trimEnd('/')
-        val remote = PortfolioApiClient().fetch(normalizedUrl, apiToken)
+        val remote = PortfolioApiClient().fetch(normalizedUrl, normalizedToken)
         require(remote.holdings.isNotEmpty()) { "伺服器目前沒有資產資料" }
 
         preferences.edit()
             .putString(KEY_SERVER_URL, normalizedUrl)
-            .putString(KEY_SERVER_TOKEN, apiToken)
+            .putString(KEY_SERVER_TOKEN, normalizedToken)
             .apply()
         mutableServerUrl.value = normalizedUrl
         applyRemotePortfolio(remote)
@@ -120,8 +120,12 @@ class LocalPortfolioRepository(
     override suspend fun syncFromServer(): ServerSyncResult = withContext(Dispatchers.IO) {
         val baseUrl = preferences.getString(KEY_SERVER_URL, null)
             ?: error("尚未設定電腦伺服器")
-        val token = preferences.getString(KEY_SERVER_TOKEN, null)
+        val storedToken = preferences.getString(KEY_SERVER_TOKEN, null)
             ?: error("尚未設定 API Token")
+        val token = PortfolioApiClient.normalizeApiToken(storedToken)
+        if (token != storedToken) {
+            preferences.edit().putString(KEY_SERVER_TOKEN, token).apply()
+        }
         val remote = PortfolioApiClient().fetch(baseUrl, token)
         require(remote.holdings.isNotEmpty()) { "伺服器目前沒有資產資料" }
 
