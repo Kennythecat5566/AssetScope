@@ -1,6 +1,7 @@
 package tw.kensuke.assetscope.ui
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -22,7 +23,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.FileUpload
+import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -74,6 +77,17 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     ) { uri ->
         uri?.readText(context)?.let(viewModel::importCsv)
     }
+    val folderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        uri?.let {
+            context.contentResolver.takePersistableUriPermission(
+                it,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+            viewModel.configureAutoSync(it)
+        }
+    }
 
     LaunchedEffect(state.message) {
         state.message?.let {
@@ -123,9 +137,91 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 HoldingRow(holding)
             }
             item {
+                AutoSyncCard(
+                    enabled = state.autoSyncFolder != null,
+                    onChooseFolder = { folderLauncher.launch(null) },
+                    onSyncNow = viewModel::syncNow,
+                    onDisable = viewModel::disableAutoSync,
+                )
+            }
+            item {
                 ImportCard(
                     onImport = { csvLauncher.launch(arrayOf("text/*", "text/csv")) },
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutoSyncCard(
+    enabled: Boolean,
+    onChooseFolder: () -> Unit,
+    onSyncNow: () -> Unit,
+    onDisable: () -> Unit,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+        ),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("資料夾自動同步", fontWeight = FontWeight.Bold)
+                    Text(
+                        if (enabled) "已啟用，每 12 小時檢查最新 CSV" else "尚未連接資料夾",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Icon(
+                    imageVector = if (enabled) Icons.Outlined.Sync else Icons.Outlined.FolderOpen,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                "Android 不允許直接讀取 Firstrade 或永豐 App 的私有資料。請將官方匯出的 CSV 存入你授權的資料夾，AssetScope 會自動讀取最新檔案。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(16.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = if (enabled) onSyncNow else onChooseFolder) {
+                    Icon(
+                        imageVector = if (enabled) Icons.Outlined.Sync else Icons.Outlined.FolderOpen,
+                        contentDescription = null,
+                    )
+                    Spacer(Modifier.size(8.dp))
+                    Text(if (enabled) "立即同步" else "選擇資料夾")
+                }
+                if (enabled) {
+                    Button(
+                        onClick = onChooseFolder,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary,
+                        ),
+                    ) {
+                        Text("更換")
+                    }
+                    Button(
+                        onClick = onDisable,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        ),
+                    ) {
+                        Text("停用")
+                    }
+                }
             }
         }
     }
@@ -398,4 +494,3 @@ private val allocationColors = listOf(
     Color(0xFFE0A53B),
     Color(0xFF718FA4),
 )
-

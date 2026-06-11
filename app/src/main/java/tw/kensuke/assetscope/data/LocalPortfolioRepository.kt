@@ -1,6 +1,8 @@
 package tw.kensuke.assetscope.data
 
 import android.content.Context
+import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
@@ -14,12 +16,28 @@ import tw.kensuke.assetscope.domain.model.Institution
 class LocalPortfolioRepository(
     context: Context,
 ) : PortfolioRepository {
+    private val appContext = context.applicationContext
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
     private val mutableHoldings = MutableStateFlow(loadHoldings())
     private val mutableExchangeRates = MutableStateFlow(ExchangeRates())
+    private val mutableAutoSyncFolder = MutableStateFlow(preferences.getString(KEY_SYNC_FOLDER, null))
+    private val preferenceListener =
+        android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            when (key) {
+                KEY_HOLDINGS -> mutableHoldings.value = loadHoldings()
+                KEY_SYNC_FOLDER -> {
+                    mutableAutoSyncFolder.value = preferences.getString(KEY_SYNC_FOLDER, null)
+                }
+            }
+        }
 
     override val holdings: StateFlow<List<Holding>> = mutableHoldings
     override val exchangeRates: StateFlow<ExchangeRates> = mutableExchangeRates
+    override val autoSyncFolder: StateFlow<String?> = mutableAutoSyncFolder
+
+    init {
+        preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
+    }
 
     override suspend fun importCsv(content: String): ImportResult {
         val (imported, skipped) = CsvHoldingParser.parse(content)
@@ -28,6 +46,41 @@ class LocalPortfolioRepository(
             saveHoldings(imported)
         }
         return ImportResult(importedCount = imported.size, skippedCount = skipped)
+    }
+
+    override suspend fun configureAutoSync(folderUri: Uri) {
+        preferences.edit().putString(KEY_SYNC_FOLDER, folderUri.toString()).apply()
+        mutableAutoSyncFolder.value = folderUri.toString()
+        AutoSyncWorker.schedule(appContext)
+    }
+
+    override suspend fun syncFromConfiguredFolder(): FolderSyncResult {
+        val folderUri = mutableAutoSyncFolder.value
+            ?: preferences.getString(KEY_SYNC_FOLDER, null)
+            ?: error("尚未設定自動同步資料夾")
+        val folder = DocumentFile.fromTreeUri(appContext, Uri.parse(folderUri))
+            ?: error("無法開啟同步資料夾")
+        val latestCsv = folder.listFiles()
+            .asSequence()
+            .filter { it.isFile && it.name?.endsWith(".csv", ignoreCase = true) == true }
+            .maxByOrNull(DocumentFile::lastModified)
+            ?: error("同步資料夾內沒有 CSV 檔案")
+        val content = appContext.contentResolver.openInputStream(latestCsv.uri)
+            ?.bufferedReader()
+            ?.use { it.readText() }
+            ?: error("無法讀取 ${latestCsv.name}")
+        val result = importCsv(content)
+        return FolderSyncResult(
+            fileName = latestCsv.name ?: "CSV",
+            importedCount = result.importedCount,
+            skippedCount = result.skippedCount,
+        )
+    }
+
+    override suspend fun disableAutoSync() {
+        preferences.edit().remove(KEY_SYNC_FOLDER).apply()
+        mutableAutoSyncFolder.value = null
+        AutoSyncWorker.cancel(appContext)
     }
 
     override suspend fun resetToSampleData() {
@@ -80,6 +133,7 @@ class LocalPortfolioRepository(
     private companion object {
         const val PREFERENCES_NAME = "asset_scope_portfolio"
         const val KEY_HOLDINGS = "holdings"
+        const val KEY_SYNC_FOLDER = "sync_folder"
 
         val sampleHoldings = listOf(
             Holding(
@@ -133,4 +187,3 @@ class LocalPortfolioRepository(
         )
     }
 }
-

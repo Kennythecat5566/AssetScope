@@ -10,6 +10,7 @@ AssetScope 是一個本機優先的 Android 資產分析 App，用來整合 Firs
 - 機構資產配置
 - 成本、淨值、未實現損益與報酬率
 - CSV 匯入及本機持久化
+- Android SAF 授權資料夾與每 12 小時背景同步
 - 純 Kotlin 資產計算與 CSV parser 單元測試
 
 ## 開發環境
@@ -47,3 +48,12 @@ app/
 App 不保存金融機構密碼，也不以 WebView 或網頁爬蟲模擬登入。後續串接永豐證券
 Shioaji 時，應由獨立後端保管 API 憑證並提供唯讀同步。
 
+## 自動同步限制
+
+Android App 沙箱禁止 AssetScope 直接讀取 Firstrade、永豐證券或永豐銀行 App 的
+私有資料。現在的自動同步會讀取使用者透過系統檔案選擇器授權的資料夾，並選擇其中
+最後更新的 CSV。若要做到完全免匯出的同步：
+
+- 永豐證券：透過自有後端串接官方 Shioaji，手機端只取得唯讀彙總資料。
+- 永豐銀行：須使用銀行正式 Open Banking/TSP 授權流程。
+- Firstrade：在官方未提供個人帳戶 API 時，維持官方 CSV 匯出方式。
