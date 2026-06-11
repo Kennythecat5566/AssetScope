@@ -57,6 +57,6 @@ data class PortfolioSummary(
     val returnRate: Double,
     val overseasValueTwd: Double,
     val domesticValueTwd: Double,
-    val allocations: List<Allocation>,
+    val institutionAllocations: List<Allocation>,
+    val assetAllocations: List<Allocation>,
 )
-

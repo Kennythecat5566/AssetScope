@@ -19,12 +19,23 @@ object PortfolioCalculator {
 
         val totalValue = holdings.sumOf { it.marketValue.toTwd(it.currency) }
         val totalCost = holdings.sumOf { it.cost.toTwd(it.currency) }
-        val grouped = holdings
+        val institutionAllocations = holdings
             .groupBy(Holding::institution)
             .map { (institution, items) ->
                 val value = items.sumOf { it.marketValue.toTwd(it.currency) }
                 Allocation(
                     label = institution.displayName,
+                    valueTwd = value,
+                    ratio = if (totalValue == 0.0) 0.0 else value / totalValue,
+                )
+            }
+            .sortedByDescending(Allocation::valueTwd)
+        val assetAllocations = holdings
+            .groupBy { it.symbol to it.name }
+            .map { (asset, items) ->
+                val value = items.sumOf { it.marketValue.toTwd(it.currency) }
+                Allocation(
+                    label = asset.first.ifBlank { asset.second },
                     valueTwd = value,
                     ratio = if (totalValue == 0.0) 0.0 else value / totalValue,
                 )
@@ -42,8 +53,8 @@ object PortfolioCalculator {
             returnRate = if (totalCost == 0.0) 0.0 else (totalValue - totalCost) / totalCost,
             overseasValueTwd = overseas,
             domesticValueTwd = totalValue - overseas,
-            allocations = grouped,
+            institutionAllocations = institutionAllocations,
+            assetAllocations = assetAllocations,
         )
     }
 }
-

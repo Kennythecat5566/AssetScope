@@ -37,6 +37,10 @@ class PortfolioCalculatorTest {
         assertEquals(31_000.0, result.totalCostTwd, 0.001)
         assertEquals(6_000.0, result.unrealizedProfitTwd, 0.001)
         assertEquals(36_000.0, result.overseasValueTwd, 0.001)
+        assertEquals(1, result.assetAllocations.size)
+        assertEquals("TEST", result.assetAllocations.first().label)
+        assertEquals(37_000.0, result.assetAllocations.first().valueTwd, 0.001)
+        assertEquals(2, result.institutionAllocations.size)
     }
 
     private fun holding(
@@ -58,4 +62,3 @@ class PortfolioCalculatorTest {
         marketPrice = price,
     )
 }
-

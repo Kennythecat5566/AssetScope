@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -45,13 +46,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -126,7 +128,12 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             item { TotalAssetCard(state.summary, state.rates.usdToTwd) }
-            item { AllocationCard(state.summary.allocations) }
+            item {
+                DistributionCard(
+                    assetAllocations = state.summary.assetAllocations,
+                    institutionAllocations = state.summary.institutionAllocations,
+                )
+            }
             item {
                 SectionHeader(
                     title = "持倉明細",
@@ -272,38 +279,79 @@ private fun TotalAssetCard(summary: PortfolioSummary, usdToTwd: Double) {
 }
 
 @Composable
-private fun AllocationCard(allocations: List<Allocation>) {
+private fun DistributionCard(
+    assetAllocations: List<Allocation>,
+    institutionAllocations: List<Allocation>,
+) {
+    var view by rememberSaveable { mutableStateOf(DistributionView.ASSET) }
+    val allocations = remember(view, assetAllocations, institutionAllocations) {
+        val source = when (view) {
+            DistributionView.ASSET -> assetAllocations
+            DistributionView.INSTITUTION -> institutionAllocations
+        }
+        source.groupSmallAllocations()
+    }
     val colors = allocationColors
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            SectionHeader("機構配置", "以新台幣計價")
+            SectionHeader("資產分布", "以新台幣計價")
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DistributionToggle(
+                    text = "個別資產",
+                    selected = view == DistributionView.ASSET,
+                    onClick = { view = DistributionView.ASSET },
+                )
+                DistributionToggle(
+                    text = "金融機構",
+                    selected = view == DistributionView.INSTITUTION,
+                    onClick = { view = DistributionView.INSTITUTION },
+                )
+            }
             Spacer(Modifier.height(20.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                AllocationRing(
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                AllocationPie(
                     allocations = allocations,
                     colors = colors,
-                    modifier = Modifier.size(112.dp),
+                    modifier = Modifier.size(210.dp),
                 )
-                Spacer(Modifier.size(24.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    allocations.forEachIndexed { index, allocation ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                Modifier
-                                    .size(10.dp)
-                                    .background(colors[index % colors.size], CircleShape),
+            }
+            Spacer(Modifier.height(20.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                allocations.forEachIndexed { index, allocation ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Box(
+                            Modifier
+                                .size(12.dp)
+                                .background(colors[index % colors.size], CircleShape),
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            text = allocation.label,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                allocation.valueTwd.asTwd(),
+                                fontWeight = FontWeight.SemiBold,
                             )
-                            Spacer(Modifier.size(8.dp))
-                            Column {
-                                Text(allocation.label, style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    allocation.ratio.asPercent(),
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
+                            Text(
+                                allocation.ratio.asPercent(unsigned = true),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
                         }
                     }
                 }
@@ -313,12 +361,42 @@ private fun AllocationCard(allocations: List<Allocation>) {
 }
 
 @Composable
-private fun AllocationRing(
+private fun DistributionToggle(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+            contentColor = if (selected) {
+                MaterialTheme.colorScheme.onPrimary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        ),
+    ) {
+        Text(text)
+    }
+}
+
+@Composable
+private fun AllocationPie(
     allocations: List<Allocation>,
     colors: List<Color>,
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier) {
+        if (allocations.isEmpty()) {
+            drawCircle(color = Color.LightGray)
+            return@Canvas
+        }
+
         var startAngle = -90f
         allocations.forEachIndexed { index, allocation ->
             val sweep = (allocation.ratio * 360f).toFloat()
@@ -326,12 +404,27 @@ private fun AllocationRing(
                 color = colors[index % colors.size],
                 startAngle = startAngle,
                 sweepAngle = sweep,
-                useCenter = false,
-                topLeft = Offset(12.dp.toPx(), 12.dp.toPx()),
-                size = Size(size.width - 24.dp.toPx(), size.height - 24.dp.toPx()),
-                style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Butt),
+                useCenter = true,
+                topLeft = Offset(3.dp.toPx(), 3.dp.toPx()),
+                size = Size(size.width - 6.dp.toPx(), size.height - 6.dp.toPx()),
             )
             startAngle += sweep
+        }
+        allocations.dropLast(1).runningFold(-90f) { angle, allocation ->
+            angle + (allocation.ratio * 360f).toFloat()
+        }.drop(1).forEach { angle ->
+            val radians = Math.toRadians(angle.toDouble())
+            val center = Offset(size.width / 2, size.height / 2)
+            val radius = size.minDimension / 2
+            drawLine(
+                color = Color.White.copy(alpha = 0.8f),
+                start = center,
+                end = Offset(
+                    x = center.x + (kotlin.math.cos(radians) * radius).toFloat(),
+                    y = center.y + (kotlin.math.sin(radians) * radius).toFloat(),
+                ),
+                strokeWidth = 2.dp.toPx(),
+            )
         }
     }
 }
@@ -477,7 +570,8 @@ private val twdFormatter = NumberFormat.getCurrencyInstance(Locale.TAIWAN).apply
 
 private fun Double.asTwd(): String = twdFormatter.format(this)
 private fun Double.asSignedTwd(): String = "${if (this >= 0) "+" else ""}${asTwd()}"
-private fun Double.asPercent(): String = "${if (this >= 0) "+" else ""}%.1f%%".format(this * 100)
+private fun Double.asPercent(unsigned: Boolean = false): String =
+    "${if (!unsigned && this >= 0) "+" else ""}%.1f%%".format(this * 100)
 private fun Double.asMoney(currency: Currency): String = when (currency) {
     Currency.TWD -> twdFormatter.format(this)
     Currency.USD -> "US$${"%,.2f".format(this)}"
@@ -493,4 +587,26 @@ private val allocationColors = listOf(
     Color(0xFF2F6B4F),
     Color(0xFFE0A53B),
     Color(0xFF718FA4),
+    Color(0xFF9A6FB0),
+    Color(0xFFD06B55),
+    Color(0xFF4D9A9A),
+    Color(0xFFB4864B),
+    Color(0xFF6574A8),
 )
+
+private enum class DistributionView {
+    ASSET,
+    INSTITUTION,
+}
+
+private fun List<Allocation>.groupSmallAllocations(maxSlices: Int = 7): List<Allocation> {
+    if (size <= maxSlices) return this
+
+    val visible = take(maxSlices - 1)
+    val remainder = drop(maxSlices - 1)
+    return visible + Allocation(
+        label = "其他",
+        valueTwd = remainder.sumOf(Allocation::valueTwd),
+        ratio = remainder.sumOf(Allocation::ratio),
+    )
+}
