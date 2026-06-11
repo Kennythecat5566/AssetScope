@@ -4,12 +4,14 @@ import kotlinx.coroutines.flow.StateFlow
 import android.net.Uri
 import tw.kensuke.assetscope.domain.model.ExchangeRates
 import tw.kensuke.assetscope.domain.model.Holding
+import tw.kensuke.assetscope.domain.model.PortfolioInsights
 
 interface PortfolioRepository {
     val holdings: StateFlow<List<Holding>>
     val exchangeRates: StateFlow<ExchangeRates>
     val autoSyncFolder: StateFlow<String?>
     val serverUrl: StateFlow<String?>
+    val insights: StateFlow<PortfolioInsights>
 
     suspend fun importCsv(content: String): ImportResult
     suspend fun configureAutoSync(folderUri: Uri)

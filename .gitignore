@@ -11,6 +11,7 @@ app/build/
 server/.venv/
 server/.env
 server/data/imports/*.csv
+server/data/imports/*.json
 !server/data/imports/.gitkeep
 server/data/cache/
 server/data/raw/

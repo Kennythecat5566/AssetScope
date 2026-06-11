@@ -9,6 +9,8 @@ AssetScope 是一個本機優先的 Android 資產分析 App，用來整合 Firs
 - 台幣與美元持倉換算
 - 機構資產配置
 - 成本、淨值、未實現損益與報酬率
+- 已實現損益、股息收入與總投資報酬
+- Firstrade 買入／賣出／股息交易時間軸
 - CSV 匯入及本機持久化
 - 可由其他 App「分享」CSV 至 AssetScope，或直接以 AssetScope 開啟 CSV
 - Android SAF 授權資料夾與每 12 小時背景同步
@@ -103,6 +105,9 @@ D:\AppDev\server\capture-firstrade-normal-browser.cmd
 
 下載後會自動產生 `server/data/imports/firstrade.csv`。由於 Firstrade 交易歷史檔
 不包含即時行情，目前市價暫用最近成交價；手機需在「PC SERVER」按一次「立即同步」。
+
+Firstrade 交易歷史會重建移動平均成本、已實現損益、未實現損益與股息收入。App
+顯示最近 20 筆活動，包含交易日期、數量、成交價、現金金額及賣出損益。
 
 目前電腦區網位址為 `192.168.0.102`，Android App 中可設定：
 

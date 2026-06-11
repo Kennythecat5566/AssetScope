@@ -68,7 +68,10 @@ import tw.kensuke.assetscope.data.PortfolioRepository
 import tw.kensuke.assetscope.domain.model.Allocation
 import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.Holding
+import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.PortfolioSummary
+import tw.kensuke.assetscope.domain.model.Transaction
+import tw.kensuke.assetscope.domain.model.TransactionType
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -145,6 +148,9 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             item { TotalAssetCard(state.summary, state.rates.usdToTwd) }
+            if (state.transactions.isNotEmpty()) {
+                item { PerformanceCard(state.performance) }
+            }
             item {
                 ServerSyncCard(
                     configuredUrl = state.serverUrl,
@@ -169,6 +175,14 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             items(state.holdings, key = Holding::id) { holding ->
                 HoldingRow(holding)
             }
+            if (state.transactions.isNotEmpty()) {
+                item {
+                    TransactionHistoryCard(
+                        transactions = state.transactions.take(20),
+                        totalCount = state.transactions.size,
+                    )
+                }
+            }
             item {
                 AutoSyncCard(
                     enabled = state.autoSyncFolder != null,
@@ -180,6 +194,180 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             item {
                 ImportCard(
                     onImport = { csvLauncher.launch(arrayOf("text/*", "text/csv")) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PerformanceCard(performance: PerformanceSummary) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                "PERFORMANCE",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+            Spacer(Modifier.height(4.dp))
+            SectionHeader("投資績效", performance.returnRate.asPercent())
+            Spacer(Modifier.height(18.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                PerformanceMetric(
+                    label = "已實現損益",
+                    value = performance.realizedProfit.asSignedUsd(),
+                    modifier = Modifier.weight(1f),
+                )
+                PerformanceMetric(
+                    label = "未實現損益",
+                    value = performance.unrealizedProfit.asSignedUsd(),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                PerformanceMetric(
+                    label = "股息收入",
+                    value = performance.dividendIncome.asUsd(),
+                    modifier = Modifier.weight(1f),
+                )
+                PerformanceMetric(
+                    label = "總投資報酬",
+                    value = performance.totalReturn.asSignedUsd(),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            if (performance.valuationNote.isNotBlank()) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    performance.valuationNote,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PerformanceMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                shape = MaterialTheme.shapes.small,
+            )
+            .padding(14.dp),
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(value, style = MaterialTheme.typography.titleMedium)
+    }
+}
+
+@Composable
+private fun TransactionHistoryCard(
+    transactions: List<Transaction>,
+    totalCount: Int,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text(
+                "ACTIVITY",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Spacer(Modifier.height(4.dp))
+            SectionHeader("交易時間軸", "最近 ${transactions.size}／$totalCount 筆")
+            Spacer(Modifier.height(12.dp))
+            transactions.forEachIndexed { index, transaction ->
+                TransactionRow(transaction)
+                if (index != transactions.lastIndex) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransactionRow(transaction: Transaction) {
+    val typeColor = when (transaction.transactionType) {
+        TransactionType.BUY -> lossColor
+        TransactionType.SELL -> profitColor
+        TransactionType.DIVIDEND -> MaterialTheme.colorScheme.secondary
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .background(typeColor.copy(alpha = 0.14f), MaterialTheme.shapes.small)
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+        ) {
+            Text(
+                transaction.transactionType.displayName,
+                style = MaterialTheme.typography.labelMedium,
+                color = typeColor,
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                "${transaction.symbol} · ${transaction.tradeDate}",
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                when (transaction.transactionType) {
+                    TransactionType.DIVIDEND -> transaction.name
+                    else -> "${transaction.quantity.asQuantity()} × ${transaction.price.asUsd()}"
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                transaction.amount.asSignedUsd(),
+                fontWeight = FontWeight.Medium,
+            )
+            if (transaction.transactionType == TransactionType.SELL) {
+                Text(
+                    "損益 ${transaction.realizedProfit.asSignedUsd()}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (transaction.realizedProfit >= 0) profitColor else lossColor,
                 )
             }
         }
@@ -622,6 +810,27 @@ private fun HoldingRow(holding: Holding) {
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
+                    "均價 ${holding.averageCost.asMoney(holding.currency)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "估價 ${holding.marketPrice.asMoney(holding.currency)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    holding.returnRate.asPercent(),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (holding.returnRate >= 0) profitColor else lossColor,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
                     "${holding.institution.displayName} · ${holding.accountName}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -730,10 +939,15 @@ private fun Double.asMoney(currency: Currency): String = when (currency) {
     Currency.TWD -> twdFormatter.format(this)
     Currency.USD -> "US$${"%,.2f".format(this)}"
 }
+private fun Double.asUsd(): String = "US$${"%,.2f".format(this)}"
+private fun Double.asSignedUsd(): String = "${if (this >= 0) "+" else ""}${asUsd()}"
 private fun Double.asSignedMoney(currency: Currency): String =
     "${if (this >= 0) "+" else ""}${asMoney(currency)}"
 private fun Double.asQuantity(): String =
     if (this % 1.0 == 0.0) "%,.0f".format(this) else "%,.2f".format(this)
+
+private val Holding.returnRate: Double
+    get() = if (cost == 0.0) 0.0 else unrealizedProfit / cost
 
 private val profitColor = Color(0xFF9A5D50)
 private val lossColor = Color(0xFF627066)

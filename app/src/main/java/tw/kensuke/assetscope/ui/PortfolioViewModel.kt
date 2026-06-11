@@ -15,6 +15,8 @@ import tw.kensuke.assetscope.domain.PortfolioCalculator
 import tw.kensuke.assetscope.domain.model.ExchangeRates
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.PortfolioSummary
+import tw.kensuke.assetscope.domain.model.PerformanceSummary
+import tw.kensuke.assetscope.domain.model.Transaction
 
 data class PortfolioUiState(
     val holdings: List<Holding> = emptyList(),
@@ -22,6 +24,8 @@ data class PortfolioUiState(
     val summary: PortfolioSummary = PortfolioCalculator.calculate(emptyList(), ExchangeRates()),
     val autoSyncFolder: String? = null,
     val serverUrl: String? = null,
+    val transactions: List<Transaction> = emptyList(),
+    val performance: PerformanceSummary = PerformanceSummary(),
     val message: String? = null,
 )
 
@@ -30,17 +34,27 @@ class PortfolioViewModel(
 ) : ViewModel() {
     private val message = MutableStateFlow<String?>(null)
 
-    val uiState: StateFlow<PortfolioUiState> = combine(
+    private val portfolioState = combine(
         repository.holdings,
         repository.exchangeRates,
-        repository.autoSyncFolder,
-        repository.serverUrl,
-        message,
-    ) { holdings, rates, autoSyncFolder, serverUrl, currentMessage ->
+        repository.insights,
+    ) { holdings, rates, insights ->
         PortfolioUiState(
             holdings = holdings,
             rates = rates,
             summary = PortfolioCalculator.calculate(holdings, rates),
+            transactions = insights.transactions,
+            performance = insights.performance,
+        )
+    }
+
+    val uiState: StateFlow<PortfolioUiState> = combine(
+        portfolioState,
+        repository.autoSyncFolder,
+        repository.serverUrl,
+        message,
+    ) { portfolio, autoSyncFolder, serverUrl, currentMessage ->
+        portfolio.copy(
             autoSyncFolder = autoSyncFolder,
             serverUrl = serverUrl,
             message = currentMessage,

@@ -20,6 +20,6 @@ def test_portfolio_requires_token(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["schema_version"] == 1
+    assert response.json()["schema_version"] == 2
+    assert response.json()["transactions"] == []
     app.dependency_overrides.clear()
-

@@ -18,6 +18,43 @@ enum class Currency {
     USD,
 }
 
+enum class TransactionType(val displayName: String) {
+    BUY("買入"),
+    SELL("賣出"),
+    DIVIDEND("股息"),
+}
+
+data class Transaction(
+    val id: String,
+    val institution: Institution,
+    val accountName: String,
+    val symbol: String,
+    val name: String,
+    val transactionType: TransactionType,
+    val currency: Currency,
+    val quantity: Double,
+    val price: Double,
+    val amount: Double,
+    val realizedProfit: Double,
+    val tradeDate: String,
+    val settledDate: String?,
+)
+
+data class PerformanceSummary(
+    val realizedProfit: Double = 0.0,
+    val unrealizedProfit: Double = 0.0,
+    val dividendIncome: Double = 0.0,
+    val totalReturn: Double = 0.0,
+    val returnRate: Double = 0.0,
+    val totalBuyCost: Double = 0.0,
+    val valuationNote: String = "",
+)
+
+data class PortfolioInsights(
+    val transactions: List<Transaction> = emptyList(),
+    val performance: PerformanceSummary = PerformanceSummary(),
+)
+
 data class Holding(
     val id: String,
     val institution: Institution,

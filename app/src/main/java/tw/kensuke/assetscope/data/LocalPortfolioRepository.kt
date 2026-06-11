@@ -14,6 +14,7 @@ import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.ExchangeRates
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.Institution
+import tw.kensuke.assetscope.domain.model.PortfolioInsights
 
 class LocalPortfolioRepository(
     context: Context,
@@ -28,6 +29,7 @@ class LocalPortfolioRepository(
     )
     private val mutableAutoSyncFolder = MutableStateFlow(preferences.getString(KEY_SYNC_FOLDER, null))
     private val mutableServerUrl = MutableStateFlow(preferences.getString(KEY_SERVER_URL, null))
+    private val mutableInsights = MutableStateFlow(PortfolioInsights())
     private val preferenceListener =
         android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
@@ -43,6 +45,7 @@ class LocalPortfolioRepository(
     override val exchangeRates: StateFlow<ExchangeRates> = mutableExchangeRates
     override val autoSyncFolder: StateFlow<String?> = mutableAutoSyncFolder
     override val serverUrl: StateFlow<String?> = mutableServerUrl
+    override val insights: StateFlow<PortfolioInsights> = mutableInsights
 
     init {
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
@@ -132,6 +135,7 @@ class LocalPortfolioRepository(
     private fun applyRemotePortfolio(remote: RemotePortfolio) {
         mutableHoldings.value = remote.holdings
         mutableExchangeRates.value = remote.rates
+        mutableInsights.value = remote.insights
         saveHoldings(remote.holdings)
         preferences.edit()
             .putFloat(KEY_USD_TO_TWD, remote.rates.usdToTwd.toFloat())

@@ -1,7 +1,10 @@
 from pathlib import Path
 
 from app.connectors.csv_folder import load_csv
-from app.connectors.firstrade_history import convert_firstrade_history
+from app.connectors.firstrade_history import (
+    convert_firstrade_history,
+    load_firstrade_activity,
+)
 
 
 def test_converts_buys_sells_and_cash(tmp_path: Path) -> None:
@@ -27,3 +30,11 @@ def test_converts_buys_sells_and_cash(tmp_path: Path) -> None:
     assert stock.average_cost == 110
     assert stock.market_price == 130
     assert cash.market_price == 690
+    transactions, performance = load_firstrade_activity(
+        destination.with_suffix(".activity.json")
+    )
+    assert len(transactions) == 3
+    assert performance.realized_profit == 20
+    assert performance.unrealized_profit == 60
+    assert performance.total_return == 80
+    assert performance.return_rate == 80 / 440

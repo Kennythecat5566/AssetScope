@@ -69,6 +69,10 @@ After download, the transaction history is automatically converted to
 rebuilt from BUY/SELL records. Because this export does not contain live
 quotes, `market_price` temporarily uses the latest transaction price.
 
+The converter also writes `firstrade.activity.json` with BUY, SELL, and
+Dividend events plus realized profit, unrealized profit, dividend income, and
+total return. The API exposes this data using schema version 2.
+
 Raw files are stored in `data/raw/firstrade`, which is excluded from Git.
 Never send account passwords in chat or place them in `.env`.
 

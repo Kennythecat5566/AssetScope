@@ -6,6 +6,10 @@ import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.ExchangeRates
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.Institution
+import tw.kensuke.assetscope.domain.model.PerformanceSummary
+import tw.kensuke.assetscope.domain.model.PortfolioInsights
+import tw.kensuke.assetscope.domain.model.Transaction
+import tw.kensuke.assetscope.domain.model.TransactionType
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URI
@@ -14,6 +18,7 @@ data class RemotePortfolio(
     val holdings: List<Holding>,
     val rates: ExchangeRates,
     val sourceCount: Int,
+    val insights: PortfolioInsights,
 )
 
 class PortfolioApiClient {
@@ -46,16 +51,25 @@ class PortfolioApiClient {
 
     private fun parse(body: String): RemotePortfolio {
         val root = JSONObject(body)
-        require(root.getInt("schema_version") == 1) { "不支援的伺服器資料版本" }
+        require(root.getInt("schema_version") in 1..2) { "不支援的伺服器資料版本" }
         val rate = root.getJSONObject("exchange_rates").getDouble("usd_to_twd")
         val holdingArray = root.getJSONArray("holdings")
         val holdings = List(holdingArray.length()) { index ->
             holdingArray.getJSONObject(index).toHolding()
         }
+        val transactions = root.optJSONArray("transactions")?.let { array ->
+            List(array.length()) { index -> array.getJSONObject(index).toTransaction() }
+        }.orEmpty()
+        val performance = root.optJSONObject("performance")?.toPerformance()
+            ?: PerformanceSummary()
         return RemotePortfolio(
             holdings = holdings,
             rates = ExchangeRates(usdToTwd = rate),
             sourceCount = root.getJSONArray("sources").length(),
+            insights = PortfolioInsights(
+                transactions = transactions,
+                performance = performance,
+            ),
         )
     }
 
@@ -70,6 +84,32 @@ class PortfolioApiClient {
         quantity = getDouble("quantity"),
         averageCost = getDouble("average_cost"),
         marketPrice = getDouble("market_price"),
+    )
+
+    private fun JSONObject.toTransaction(): Transaction = Transaction(
+        id = getString("id"),
+        institution = Institution.valueOf(getString("institution")),
+        accountName = getString("account_name"),
+        symbol = getString("symbol"),
+        name = getString("name"),
+        transactionType = TransactionType.valueOf(getString("transaction_type")),
+        currency = Currency.valueOf(getString("currency")),
+        quantity = getDouble("quantity"),
+        price = getDouble("price"),
+        amount = getDouble("amount"),
+        realizedProfit = getDouble("realized_profit"),
+        tradeDate = getString("trade_date"),
+        settledDate = optString("settled_date").takeIf { it.isNotBlank() && it != "null" },
+    )
+
+    private fun JSONObject.toPerformance(): PerformanceSummary = PerformanceSummary(
+        realizedProfit = getDouble("realized_profit"),
+        unrealizedProfit = getDouble("unrealized_profit"),
+        dividendIncome = getDouble("dividend_income"),
+        totalReturn = getDouble("total_return"),
+        returnRate = getDouble("return_rate"),
+        totalBuyCost = getDouble("total_buy_cost"),
+        valuationNote = optString("valuation_note"),
     )
 
     private fun validateAndNormalizeBaseUrl(value: String): String {
@@ -99,4 +139,3 @@ class PortfolioApiClient {
             (first == 192 && second == 168)
     }
 }
-
