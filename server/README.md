@@ -16,6 +16,9 @@ Edit `.env` and replace `ASSETSCOPE_API_TOKEN` with a long random value. Then:
 .\start.cmd
 ```
 
+`start.cmd` is safe to run repeatedly. If AssetScope is already listening on
+port `8787`, it reports that the server is running and exits successfully.
+
 The API listens on `http://0.0.0.0:8787`. On the current network, the Android
 app should use `http://192.168.0.102:8787`.
 

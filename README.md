@@ -81,6 +81,8 @@ cd D:\AppDev\server
 D:\AppDev\server\install-startup-task.cmd
 ```
 
+`start.cmd` 可以重複執行；若伺服器已在 `8787` 執行，會直接顯示已啟動，不會再建立第二份程序。
+
 目前電腦區網位址為 `192.168.0.102`，Android App 中可設定：
 
 ```text
