@@ -7,7 +7,7 @@ from app.models import AssetType, Institution
 
 class FakeShioaji:
     def __init__(self) -> None:
-        self.stock_account = object()
+        self.stock_account = SimpleNamespace(signed=True)
         self.logged_out = False
         self.requested_unit = None
 

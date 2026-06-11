@@ -121,6 +121,11 @@ and the linked SinoPac stock settlement account balance. It does not call any
 order endpoint. Shioaji cannot read unrelated SinoPac savings or time-deposit
 accounts; those still need an authorized Open Banking provider or a CSV import.
 
+If the server reports that the stock account is not API-signed, complete the
+official SinoPac API agreement and stock API test. A successful API Key login
+alone is not sufficient; `api.list_accounts()` must report `signed=True` for
+the stock account before position and balance queries are accepted.
+
 ## Windows Automation
 
 Run this once to start the API at Windows sign-in:

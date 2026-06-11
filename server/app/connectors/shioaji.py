@@ -35,6 +35,12 @@ def load_shioaji_assets(
             stock_account = api.stock_account
             if stock_account is None:
                 raise RuntimeError("No Shioaji stock account was returned")
+            if not getattr(stock_account, "signed", False):
+                raise RuntimeError(
+                    "Shioaji stock account is not API-signed. Complete the "
+                    "SinoPac API agreement and stock API test, then wait for "
+                    "the account signed status to become true."
+                )
 
             positions = api.list_positions(
                 account=stock_account,

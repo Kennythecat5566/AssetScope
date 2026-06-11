@@ -18,8 +18,22 @@ if ($ExistingListener) {
             -Uri "http://127.0.0.1:8787/health" `
             -TimeoutSec 3
         if ($Health.status -eq "ok") {
-            Write-Host "AssetScope Server is already running on port 8787."
-            exit 0
+            $Owner = Get-Process `
+                -Id $ExistingListener.OwningProcess `
+                -ErrorAction SilentlyContinue
+            $EnvFile = Join-Path $ServerRoot ".env"
+            $ConfigChanged = $Owner -and
+                (Test-Path -LiteralPath $EnvFile) -and
+                ((Get-Item -LiteralPath $EnvFile).LastWriteTimeUtc -gt
+                    $Owner.StartTime.ToUniversalTime())
+            if (-not $ConfigChanged) {
+                Write-Host "AssetScope Server is already running on port 8787."
+                exit 0
+            }
+
+            Write-Host "Configuration changed. Restarting AssetScope Server..."
+            Stop-Process -Id $ExistingListener.OwningProcess -Force
+            Start-Sleep -Seconds 2
         }
     } catch {
         # Fall through to the port ownership error below.
