@@ -38,24 +38,32 @@ Do not use duplicate account/symbol rows across files. A sample format is in
 
 ## Browser-Assisted Firstrade Export
 
-Run:
+Firstrade may reject an automated browser as a new or suspicious device. If
+you see verification reference code `2192`, stop retrying and use the normal
+browser workflow:
 
 ```powershell
-.\capture-firstrade.cmd
+.\capture-firstrade-normal-browser.cmd
 ```
 
-AssetScope opens a dedicated Microsoft Edge profile. Enter your Firstrade
-credentials and MFA only inside that official browser window, then navigate to
+This opens Firstrade in your regular default browser and watches the Windows
+Downloads folder for the next CSV. Sign in normally, complete MFA, navigate to
 `Accounts > Tax Center > Download Account Information`, choose `Excel CSV
 Files`, and click `Download`.
 
-The login profile is stored in `browser-profiles/firstrade`, and raw files are
-stored in `data/raw/firstrade`. Both locations are excluded from Git. Never
-send account passwords in chat or place them in `.env`.
+The watcher only reads the newly downloaded CSV. It cannot see passwords,
+cookies, page contents, or MFA codes.
+
+Raw files are stored in `data/raw/firstrade`, which is excluded from Git.
+Never send account passwords in chat or place them in `.env`.
 
 The raw Firstrade CSV is not copied directly to `data/imports`, because its
 columns differ from AssetScope's normalized holdings schema. After capturing
 one export, a Firstrade-specific converter can transform it automatically.
+
+The Playwright-based `capture-firstrade.cmd` remains available for sites that
+accept a dedicated browser profile, but the normal-browser workflow is the
+recommended Firstrade option.
 
 ## Shioaji
 

@@ -86,11 +86,11 @@ D:\AppDev\server\install-startup-task.cmd
 Firstrade 瀏覽器輔助匯出：
 
 ```powershell
-D:\AppDev\server\capture-firstrade.cmd
+D:\AppDev\server\capture-firstrade-normal-browser.cmd
 ```
 
-請只在程式開啟的 Firstrade 官方瀏覽器頁面輸入帳密與 MFA，不要將金融帳密貼到對話、
-`.env` 或程式碼。登入狀態及原始下載檔只保存在本機且不納入 Git。
+若自動化瀏覽器顯示參考代碼 `2192`，請勿反覆嘗試。新版流程會使用你平常的瀏覽器登入，
+程式只監控 Windows 下載資料夾的新 CSV，不會讀取帳密、Cookie 或 MFA。
 
 目前電腦區網位址為 `192.168.0.102`，Android App 中可設定：
 
