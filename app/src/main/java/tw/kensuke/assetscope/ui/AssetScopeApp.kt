@@ -36,9 +36,11 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.automirrored.outlined.ShowChart
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -55,6 +57,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -94,6 +97,7 @@ import tw.kensuke.assetscope.domain.model.PriceHistory
 import tw.kensuke.assetscope.domain.model.PortfolioSummary
 import tw.kensuke.assetscope.domain.model.Transaction
 import tw.kensuke.assetscope.domain.model.TransactionType
+import tw.kensuke.assetscope.domain.model.UiLanguage
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -117,7 +121,8 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     var portfolioHistory by remember { mutableStateOf<PortfolioHistory?>(null) }
     var portfolioHistoryLoading by remember { mutableStateOf(false) }
     var portfolioHistoryError by remember { mutableStateOf<String?>(null) }
-    var displayCurrency by rememberSaveable { mutableStateOf(Currency.TWD) }
+    val displayCurrency = state.appSettings.displayCurrency
+    var showSettings by remember { mutableStateOf(false) }
     var checkingUpdate by remember { mutableStateOf(false) }
     val pagerState = rememberPagerState(pageCount = { AppPage.entries.size })
     val snackbarHostState = remember { SnackbarHostState() }
@@ -191,6 +196,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
         onDispose { context.unregisterReceiver(receiver) }
     }
 
+    CompositionLocalProvider(LocalUiLanguage provides state.appSettings.language) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -198,20 +204,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
                 ),
-                title = {
-                    Column {
-                        Text(
-                            text = "ASSET SCOPE",
-                            style = MaterialTheme.typography.titleMedium,
-                            letterSpacing = androidx.compose.ui.unit.TextUnit.Unspecified,
-                        )
-                        Text(
-                            text = "暮らしと資産 · 跨境資產總覽",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                },
+                title = {},
                 actions = {
                     if (!BuildConfig.DEBUG) {
                         IconButton(
@@ -241,7 +234,16 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                         }
                     }
                     IconButton(onClick = viewModel::resetSampleData) {
-                        Icon(Icons.Outlined.Refresh, contentDescription = "還原範例資料")
+                        Icon(
+                            Icons.Outlined.Refresh,
+                            contentDescription = uiText("重新整理", "Refresh"),
+                        )
+                    }
+                    IconButton(onClick = { showSettings = true }) {
+                        Icon(
+                            Icons.Outlined.Settings,
+                            contentDescription = uiText("設定", "Settings"),
+                        )
                     }
                 },
             )
@@ -281,7 +283,6 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                     rateSource = state.rates.source,
                                     rateUpdatedAt = state.rates.updatedAt,
                                     displayCurrency = displayCurrency,
-                                    onCurrencyChange = { displayCurrency = it },
                                     onShowTrend = {
                                         showPortfolioTrend = true
                                         portfolioHistory = null
@@ -344,8 +345,11 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                         AppPage.HOLDINGS -> {
                             item {
                                 SectionHeader(
-                                    title = "持倉明細",
-                                    trailing = "${state.holdings.size} 項資產",
+                                    title = uiText("持倉明細", "Holdings"),
+                                    trailing = uiText(
+                                        "${state.holdings.size} 項資產",
+                                        "${state.holdings.size} assets",
+                                    ),
                                 )
                             }
                             items(state.holdings, key = Holding::id) { holding ->
@@ -475,6 +479,90 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             },
         )
     }
+    if (showSettings) {
+        SettingsDialog(
+            settings = state.appSettings,
+            onCurrencyChange = viewModel::setDisplayCurrency,
+            onLanguageChange = viewModel::setUiLanguage,
+            onDismiss = { showSettings = false },
+        )
+    }
+    }
+}
+
+@Composable
+private fun SettingsDialog(
+    settings: tw.kensuke.assetscope.domain.model.AppSettings,
+    onCurrencyChange: (Currency) -> Unit,
+    onLanguageChange: (UiLanguage) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(uiText("設定", "Settings")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                SettingChoice(
+                    title = uiText("顯示幣別", "Display currency"),
+                    options = Currency.entries.map { it.name },
+                    selected = settings.displayCurrency.name,
+                    onSelect = { onCurrencyChange(Currency.valueOf(it)) },
+                )
+                SettingChoice(
+                    title = uiText("介面語言", "Interface language"),
+                    options = listOf("繁體中文", "English"),
+                    selected = if (settings.language == UiLanguage.EN) "English" else "繁體中文",
+                    onSelect = {
+                        onLanguageChange(
+                            if (it == "English") UiLanguage.EN else UiLanguage.ZH_TW,
+                        )
+                    },
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text(uiText("完成", "Done"))
+            }
+        },
+    )
+}
+
+@Composable
+private fun SettingChoice(
+    title: String,
+    options: List<String>,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            title,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { option ->
+                Button(
+                    onClick = { onSelect(option) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (selected == option) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        contentColor = if (selected == option) {
+                            MaterialTheme.colorScheme.onPrimary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    ),
+                ) {
+                    Text(option)
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -509,7 +597,10 @@ private fun PageNavigation(
                     },
                 ),
             ) {
-                Text(page.label, style = MaterialTheme.typography.labelMedium)
+                Text(
+                    page.label(LocalUiLanguage.current),
+                    style = MaterialTheme.typography.labelMedium,
+                )
             }
         }
     }
@@ -547,8 +638,8 @@ private fun ExpensePage(
 
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         SectionHeader(
-            title = "日常花費",
-            trailing = latestMonth?.replace("-", " / ") ?: "尚無資料",
+            title = uiText("日常花費", "Expenses"),
+            trailing = latestMonth?.replace("-", " / ") ?: uiText("尚無資料", "No data"),
         )
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -557,7 +648,7 @@ private fun ExpensePage(
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    "本月信用卡支出",
+                    uiText("本月信用卡支出", "Card spending this month"),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -569,7 +660,10 @@ private fun ExpensePage(
                     style = MaterialTheme.typography.headlineMedium,
                 )
                 Text(
-                    "${monthlyExpenses.size} 筆永豐信用卡交易",
+                    uiText(
+                        "${monthlyExpenses.size} 筆永豐信用卡交易",
+                        "${monthlyExpenses.size} SinoPac card transactions",
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -582,7 +676,10 @@ private fun ExpensePage(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             ) {
                 Text(
-                    "尚無刷卡紀錄。將永豐官方匯出的 CSV 放入電腦伺服器的 data/imports 後同步。",
+                    uiText(
+                        "尚無刷卡紀錄。將永豐官方匯出的 CSV 放入電腦伺服器的 data/imports 後同步。",
+                        "No card activity yet. Export the official SinoPac CSV, place it in the server data/imports folder, then sync.",
+                    ),
                     modifier = Modifier.padding(20.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -596,7 +693,10 @@ private fun ExpensePage(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    SectionHeader("支出分類", "${allocations.size} 類")
+                    SectionHeader(
+                        uiText("支出分類", "Spending categories"),
+                        uiText("${allocations.size} 類", "${allocations.size} categories"),
+                    )
                     Spacer(Modifier.height(16.dp))
                     Box(
                         modifier = Modifier.fillMaxWidth(),
@@ -625,7 +725,10 @@ private fun ExpensePage(
                                     ),
                             )
                             Spacer(Modifier.width(8.dp))
-                            Text(allocation.label, modifier = Modifier.weight(1f))
+                            Text(
+                                expenseCategoryLabel(allocation.label),
+                                modifier = Modifier.weight(1f),
+                            )
                             Text(
                                 allocation.valueTwd
                                     .toDisplayCurrency(displayCurrency, usdToTwd)
@@ -642,7 +745,10 @@ private fun ExpensePage(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                SectionHeader("刷卡明細", "最近 ${monthlyExpenses.size} 筆")
+                SectionHeader(
+                    uiText("刷卡明細", "Card activity"),
+                    uiText("最近 ${monthlyExpenses.size} 筆", "${monthlyExpenses.size} recent"),
+                )
                 Spacer(Modifier.height(8.dp))
                 monthlyExpenses.forEachIndexed { index, expense ->
                     val multiplier = currencyMultiplier(
@@ -667,7 +773,7 @@ private fun ExpensePage(
                                 buildString {
                                     append(expense.transactionDate)
                                     append(" · ")
-                                    append(expense.category.displayName)
+                                    append(expense.category.localizedName())
                                     if (expense.cardLastFour.isNotBlank()) {
                                         append(" · •")
                                         append(expense.cardLastFour)
@@ -710,7 +816,10 @@ private fun TransactionPage(
         }
     }
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        SectionHeader("交易明細", "${transactions.size} 筆")
+        SectionHeader(
+            uiText("交易明細", "Transactions"),
+            uiText("${transactions.size} 筆", "${transactions.size} items"),
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TransactionFilter.entries.forEach { item ->
                 Button(
@@ -728,7 +837,7 @@ private fun TransactionPage(
                         },
                     ),
                 ) {
-                    Text(item.label)
+                    Text(item.label(LocalUiLanguage.current))
                 }
             }
         }
@@ -743,11 +852,20 @@ private fun TransactionPage(
                 Text(
                     text = when (filter) {
                         TransactionFilter.ALL ->
-                            "尚無交易資料。請到「同步」頁按立即同步。"
+                            uiText(
+                                "尚無交易資料。請到「同步」頁按立即同步。",
+                                "No transactions yet. Open Sync and tap Sync now.",
+                            )
                         TransactionFilter.FIRSTRADE ->
-                            "尚無 Firstrade 交易資料，請重新匯出交易 CSV。"
+                            uiText(
+                                "尚無 Firstrade 交易資料，請重新匯出交易 CSV。",
+                                "No Firstrade transactions. Export the transaction CSV again.",
+                            )
                         TransactionFilter.SINOPAC ->
-                            "目前沒有 Shioaji 可查的永豐持倉批次或已實現賣出。"
+                            uiText(
+                                "目前沒有 Shioaji 可查的永豐持倉批次或已實現賣出。",
+                                "No SinoPac position lots or realized sales are currently available from Shioaji.",
+                            )
                     },
                     modifier = Modifier.padding(20.dp),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -794,11 +912,14 @@ private fun AppUpdateCard(
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        "新版本 ${update.versionName}",
+                        uiText("新版本 ${update.versionName}", "Version ${update.versionName}"),
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
-                        "目前 $currentVersion → 最新 ${update.versionName}",
+                        uiText(
+                            "目前 $currentVersion → 最新 ${update.versionName}",
+                            "Current $currentVersion → Latest ${update.versionName}",
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -829,7 +950,13 @@ private fun AppUpdateCard(
             ) {
                 Icon(Icons.Outlined.SystemUpdate, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text(if (isDownloading) "下載中" else "下載並安裝")
+                Text(
+                    if (isDownloading) {
+                        uiText("下載中", "Downloading")
+                    } else {
+                        uiText("下載並安裝", "Download and install")
+                    },
+                )
             }
         }
     }
@@ -856,20 +983,20 @@ private fun PerformanceCard(
                 color = MaterialTheme.colorScheme.secondary,
             )
             Spacer(Modifier.height(4.dp))
-            SectionHeader("投資績效", performance.returnRate.asPercent())
+            SectionHeader(uiText("投資績效", "Performance"), performance.returnRate.asPercent())
             Spacer(Modifier.height(18.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 PerformanceMetric(
-                    label = "已實現損益",
+                    label = uiText("已實現損益", "Realized P/L"),
                     value = (performance.realizedProfit * multiplier)
                         .asSignedMoney(displayCurrency),
                     modifier = Modifier.weight(1f),
                 )
                 PerformanceMetric(
-                    label = "未實現損益",
+                    label = uiText("未實現損益", "Unrealized P/L"),
                     value = (performance.unrealizedProfit * multiplier)
                         .asSignedMoney(displayCurrency),
                     modifier = Modifier.weight(1f),
@@ -881,12 +1008,12 @@ private fun PerformanceCard(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 PerformanceMetric(
-                    label = "股息收入",
+                    label = uiText("股息收入", "Dividend income"),
                     value = (performance.dividendIncome * multiplier).asMoney(displayCurrency),
                     modifier = Modifier.weight(1f),
                 )
                 PerformanceMetric(
-                    label = "總投資報酬",
+                    label = uiText("總投資報酬", "Total return"),
                     value = (performance.totalReturn * multiplier)
                         .asSignedMoney(displayCurrency),
                     modifier = Modifier.weight(1f),
@@ -949,7 +1076,13 @@ private fun TransactionHistoryCard(
                 color = MaterialTheme.colorScheme.primary,
             )
             Spacer(Modifier.height(4.dp))
-            SectionHeader("交易時間軸", "最近 ${transactions.size}／$totalCount 筆")
+            SectionHeader(
+                uiText("交易時間軸", "Timeline"),
+                uiText(
+                    "最近 ${transactions.size}／$totalCount 筆",
+                    "${transactions.size} of $totalCount recent",
+                ),
+            )
             Spacer(Modifier.height(12.dp))
             transactions.forEachIndexed { index, transaction ->
                 TransactionRow(transaction, displayCurrency, usdToTwd)
@@ -986,7 +1119,7 @@ private fun TransactionRow(
                 .padding(horizontal = 10.dp, vertical = 7.dp),
         ) {
             Text(
-                transaction.transactionType.displayName,
+                transaction.transactionType.localizedName(),
                 style = MaterialTheme.typography.labelMedium,
                 color = typeColor,
             )
@@ -998,7 +1131,7 @@ private fun TransactionRow(
                 fontWeight = FontWeight.Medium,
             )
             Text(
-                "${transaction.institution.displayName} · ${transaction.accountName}",
+                "${transaction.institution.localizedName()} · ${transaction.accountName}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.secondary,
             )
@@ -1023,14 +1156,16 @@ private fun TransactionRow(
             )
             if (transaction.transactionType == TransactionType.SELL) {
                 Text(
-                    "損益 ${(transaction.realizedProfit * multiplier).asSignedMoney(displayCurrency)}",
+                    "${uiText("損益", "P/L")} ${
+                        (transaction.realizedProfit * multiplier).asSignedMoney(displayCurrency)
+                    }",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (transaction.realizedProfit >= 0) profitColor else lossColor,
                 )
             }
             transaction.settledDate?.let {
                 Text(
-                    "交割 $it",
+                    "${uiText("交割", "Settled")} $it",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1073,7 +1208,10 @@ private fun ServerSyncCard(
                         color = MaterialTheme.colorScheme.secondary,
                     )
                     Spacer(Modifier.height(4.dp))
-                    Text("電腦資產伺服器", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        uiText("電腦資產伺服器", "PC asset server"),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
                 }
                 Icon(
                     imageVector = Icons.Outlined.Computer,
@@ -1084,9 +1222,15 @@ private fun ServerSyncCard(
             Spacer(Modifier.height(10.dp))
             Text(
                 if (isConfigured) {
-                    "已連接 $configuredUrl，每 12 小時自動同步。"
+                    uiText(
+                        "已連接 $configuredUrl，每 12 小時自動同步。",
+                        "Connected to $configuredUrl. Syncs every 12 hours.",
+                    )
                 } else {
-                    "手機與電腦需連接同一個 Wi-Fi。輸入電腦區網網址與 .env 中的 API Token。"
+                    uiText(
+                        "手機與電腦需連接同一個 Wi-Fi。輸入電腦區網網址與 .env 中的 API Token。",
+                        "Connect the phone and PC to the same network, then enter the server URL and API token from .env.",
+                    )
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1097,7 +1241,7 @@ private fun ServerSyncCard(
                     value = url,
                     onValueChange = { url = it },
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("伺服器網址") },
+                    label = { Text(uiText("伺服器網址", "Server URL")) },
                     singleLine = true,
                     shape = MaterialTheme.shapes.small,
                 )
@@ -1121,7 +1265,13 @@ private fun ServerSyncCard(
                 ) {
                     Icon(Icons.Outlined.Sync, contentDescription = null)
                     Spacer(Modifier.size(8.dp))
-                    Text(if (isConfigured) "立即同步" else "連接並同步")
+                    Text(
+                        if (isConfigured) {
+                            uiText("立即同步", "Sync now")
+                        } else {
+                            uiText("連接並同步", "Connect and sync")
+                        },
+                    )
                 }
                 if (isConfigured) {
                     Button(
@@ -1131,7 +1281,7 @@ private fun ServerSyncCard(
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
                     ) {
-                        Text("停用")
+                        Text(uiText("停用", "Disable"))
                     }
                 }
             }
@@ -1168,9 +1318,19 @@ private fun AutoSyncCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Spacer(Modifier.height(4.dp))
-                    Text("資料夾自動同步", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        if (enabled) "已啟用，每 12 小時檢查最新 CSV" else "尚未連接資料夾",
+                        uiText("資料夾自動同步", "Folder auto-sync"),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        if (enabled) {
+                            uiText(
+                                "已啟用，每 12 小時檢查最新 CSV",
+                                "Enabled. Checks for a new CSV every 12 hours.",
+                            )
+                        } else {
+                            uiText("尚未連接資料夾", "No folder connected")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1183,7 +1343,10 @@ private fun AutoSyncCard(
             }
             Spacer(Modifier.height(10.dp))
             Text(
-                "Android 不允許直接讀取 Firstrade 或永豐 App 的私有資料。請將官方匯出的 CSV 存入你授權的資料夾，AssetScope 會自動讀取最新檔案。",
+                uiText(
+                    "Android 不允許直接讀取 Firstrade 或永豐 App 的私有資料。請將官方匯出的 CSV 存入你授權的資料夾，App 會自動讀取最新檔案。",
+                    "Android cannot read private data from Firstrade or SinoPac apps. Save an official CSV in an authorized folder and the app will import the newest file.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1195,7 +1358,10 @@ private fun AutoSyncCard(
                         contentDescription = null,
                     )
                     Spacer(Modifier.size(8.dp))
-                    Text(if (enabled) "立即同步" else "選擇資料夾")
+                    Text(
+                        if (enabled) uiText("立即同步", "Sync now")
+                        else uiText("選擇資料夾", "Choose folder"),
+                    )
                 }
                 if (enabled) {
                     Button(
@@ -1204,7 +1370,7 @@ private fun AutoSyncCard(
                             containerColor = MaterialTheme.colorScheme.secondary,
                         ),
                     ) {
-                        Text("更換")
+                        Text(uiText("更換", "Change"))
                     }
                     Button(
                         onClick = onDisable,
@@ -1213,7 +1379,7 @@ private fun AutoSyncCard(
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         ),
                     ) {
-                        Text("停用")
+                        Text(uiText("停用", "Disable"))
                     }
                 }
             }
@@ -1228,7 +1394,6 @@ private fun TotalAssetOverviewCard(
     rateSource: String,
     rateUpdatedAt: String?,
     displayCurrency: Currency,
-    onCurrencyChange: (Currency) -> Unit,
     onShowTrend: () -> Unit,
 ) {
     val multiplier = if (displayCurrency == Currency.TWD) 1.0 else 1 / usdToTwd
@@ -1242,29 +1407,11 @@ private fun TotalAssetOverviewCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = "TOTAL BALANCE / 總資產淨值",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.68f),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    CurrencyButton(
-                        currency = Currency.TWD,
-                        selected = displayCurrency == Currency.TWD,
-                        onClick = onCurrencyChange,
-                    )
-                    CurrencyButton(
-                        currency = Currency.USD,
-                        selected = displayCurrency == Currency.USD,
-                        onClick = onCurrencyChange,
-                    )
-                }
-            }
+            Text(
+                text = uiText("總資產淨值", "TOTAL BALANCE"),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.68f),
+            )
             Spacer(Modifier.height(12.dp))
             Text(
                 text = (summary.totalValueTwd * multiplier).asMoney(displayCurrency),
@@ -1277,16 +1424,16 @@ private fun TotalAssetOverviewCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Metric(
-                    label = "未實現損益",
+                    label = uiText("未實現損益", "Unrealized P/L"),
                     value = (summary.unrealizedProfitTwd * multiplier)
                         .asSignedMoney(displayCurrency),
                 )
-                Metric(label = "報酬率", value = summary.returnRate.asPercent())
+                Metric(label = uiText("報酬率", "Return"), value = summary.returnRate.asPercent())
                 Metric(label = "USD/TWD", value = "%.3f".format(usdToTwd))
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                "匯率：$rateSource"
+                "${uiText("匯率", "FX rate")}: $rateSource"
                     + (rateUpdatedAt?.let { " · ${it.take(16).replace('T', ' ')} UTC" } ?: ""),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1301,38 +1448,9 @@ private fun TotalAssetOverviewCard(
             ) {
                 Icon(Icons.AutoMirrored.Outlined.ShowChart, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text("查看總資產趨勢")
+                Text(uiText("查看總資產趨勢", "View net worth trend"))
             }
         }
-    }
-}
-
-@Composable
-private fun CurrencyButton(
-    currency: Currency,
-    selected: Boolean,
-    onClick: (Currency) -> Unit,
-) {
-    Button(
-        onClick = { onClick(currency) },
-        contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            horizontal = 10.dp,
-            vertical = 4.dp,
-        ),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-            contentColor = if (selected) {
-                MaterialTheme.colorScheme.onPrimary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        ),
-    ) {
-        Text(currency.name, style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -1360,16 +1478,19 @@ private fun DistributionCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            SectionHeader("資產分布", "以新台幣計價")
+            SectionHeader(
+                uiText("資產分布", "Allocation"),
+                uiText("依顯示幣別計價", "In display currency"),
+            )
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DistributionToggle(
-                    text = "個別資產",
+                    text = uiText("個別資產", "Assets"),
                     selected = view == DistributionView.ASSET,
                     onClick = { view = DistributionView.ASSET },
                 )
                 DistributionToggle(
-                    text = "金融機構",
+                    text = uiText("金融機構", "Institutions"),
                     selected = view == DistributionView.INSTITUTION,
                     onClick = { view = DistributionView.INSTITUTION },
                 )
@@ -1399,7 +1520,7 @@ private fun DistributionCard(
                         )
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            text = allocation.label,
+                            text = allocationLabel(allocation.label),
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -1545,7 +1666,10 @@ private fun HoldingRow(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        "${holding.quantity.asQuantity()} 股／單位",
+                        uiText(
+                            "${holding.quantity.asQuantity()} 股／單位",
+                            "${holding.quantity.asQuantity()} shares / units",
+                        ),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1590,12 +1714,16 @@ private fun HoldingRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    "均價 ${(holding.averageCost * multiplier).asMoney(displayCurrency)}",
+                    "${uiText("均價", "Avg")} ${
+                        (holding.averageCost * multiplier).asMoney(displayCurrency)
+                    }",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    "市值 ${(holding.marketValue * multiplier).asMoney(displayCurrency)}",
+                    "${uiText("市值", "Value")} ${
+                        (holding.marketValue * multiplier).asMoney(displayCurrency)
+                    }",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1608,7 +1736,10 @@ private fun HoldingRow(
             if (isMarketAsset) {
                 Spacer(Modifier.height(5.dp))
                 Text(
-                    "點擊查看 K 線與趨勢 · ${marketSummary?.source ?: "行情載入中"}",
+                    uiText(
+                        "點擊查看 K 線與趨勢 · ${marketSummary?.source ?: "行情載入中"}",
+                        "Tap for chart and trend · ${marketSummary?.source ?: "Loading quotes"}",
+                    ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.secondary,
                 )
@@ -1670,10 +1801,13 @@ private fun ImportCard(onImport: () -> Unit) {
                 color = MaterialTheme.colorScheme.secondary,
             )
             Spacer(Modifier.height(4.dp))
-            Text("匯入資產 CSV", style = MaterialTheme.typography.titleMedium)
+            Text(uiText("匯入資產 CSV", "Import holdings CSV"), style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(6.dp))
             Text(
-                "支援標準化持倉資料。你也可以從其他 App 分享 CSV，或在檔案管理器直接用 AssetScope 開啟。",
+                uiText(
+                    "支援標準化持倉資料。你也可以從其他 App 分享 CSV，或在檔案管理器直接用本 App 開啟。",
+                    "Import normalized holdings data, share a CSV from another app, or open one from the file manager.",
+                ),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1686,7 +1820,7 @@ private fun ImportCard(onImport: () -> Unit) {
             ) {
                 Icon(Icons.Outlined.FileUpload, contentDescription = null)
                 Spacer(Modifier.size(8.dp))
-                Text("選擇 CSV")
+                Text(uiText("選擇 CSV", "Choose CSV"))
             }
         }
     }
@@ -1783,18 +1917,32 @@ private enum class DistributionView {
     INSTITUTION,
 }
 
-private enum class AppPage(val label: String) {
-    OVERVIEW("總覽"),
-    HOLDINGS("持股"),
-    TRANSACTIONS("交易"),
-    EXPENSES("消費"),
-    SYNC("同步"),
+private enum class AppPage {
+    OVERVIEW,
+    HOLDINGS,
+    TRANSACTIONS,
+    EXPENSES,
+    SYNC;
+
+    fun label(language: UiLanguage): String = when (this) {
+        OVERVIEW -> if (language == UiLanguage.EN) "Overview" else "總覽"
+        HOLDINGS -> if (language == UiLanguage.EN) "Holdings" else "持股"
+        TRANSACTIONS -> if (language == UiLanguage.EN) "Trades" else "交易"
+        EXPENSES -> if (language == UiLanguage.EN) "Expenses" else "消費"
+        SYNC -> if (language == UiLanguage.EN) "Sync" else "同步"
+    }
 }
 
-private enum class TransactionFilter(val label: String) {
-    ALL("全部"),
-    FIRSTRADE("Firstrade"),
-    SINOPAC("永豐"),
+private enum class TransactionFilter {
+    ALL,
+    FIRSTRADE,
+    SINOPAC;
+
+    fun label(language: UiLanguage): String = when (this) {
+        ALL -> if (language == UiLanguage.EN) "All" else "全部"
+        FIRSTRADE -> "Firstrade"
+        SINOPAC -> if (language == UiLanguage.EN) "SinoPac" else "永豐"
+    }
 }
 
 private fun List<Allocation>.groupSmallAllocations(maxSlices: Int = 7): List<Allocation> {
@@ -1803,8 +1951,52 @@ private fun List<Allocation>.groupSmallAllocations(maxSlices: Int = 7): List<All
     val visible = take(maxSlices - 1)
     val remainder = drop(maxSlices - 1)
     return visible + Allocation(
-        label = "其他",
+        label = "OTHER",
         valueTwd = remainder.sumOf(Allocation::valueTwd),
         ratio = remainder.sumOf(Allocation::ratio),
     )
+}
+
+@Composable
+private fun Institution.localizedName(): String = when (this) {
+    Institution.FIRSTRade -> "Firstrade"
+    Institution.SINOPAC_SECURITIES -> uiText("永豐證券", "SinoPac Securities")
+    Institution.SINOPAC_BANK -> uiText("永豐銀行", "SinoPac Bank")
+}
+
+@Composable
+private fun TransactionType.localizedName(): String = when (this) {
+    TransactionType.BUY -> uiText("買入", "Buy")
+    TransactionType.SELL -> uiText("賣出", "Sell")
+    TransactionType.DIVIDEND -> uiText("股息", "Dividend")
+}
+
+@Composable
+private fun tw.kensuke.assetscope.domain.model.ExpenseCategory.localizedName(): String =
+    expenseCategoryLabel(displayName)
+
+@Composable
+private fun expenseCategoryLabel(value: String): String = when (value) {
+    "餐飲" -> uiText("餐飲", "Dining")
+    "交通" -> uiText("交通", "Transport")
+    "購物" -> uiText("購物", "Shopping")
+    "日用品" -> uiText("日用品", "Groceries")
+    "娛樂" -> uiText("娛樂", "Entertainment")
+    "訂閱" -> uiText("訂閱", "Subscriptions")
+    "旅遊" -> uiText("旅遊", "Travel")
+    "醫療" -> uiText("醫療", "Health")
+    "水電電信" -> uiText("水電電信", "Utilities")
+    else -> uiText("其他", "Other")
+}
+
+@Composable
+private fun allocationLabel(value: String): String = when (value) {
+    "股票" -> uiText("股票", "Stocks")
+    "ETF" -> "ETF"
+    "現金" -> uiText("現金", "Cash")
+    "存款" -> uiText("存款", "Deposits")
+    "永豐證券" -> uiText("永豐證券", "SinoPac Securities")
+    "永豐銀行" -> uiText("永豐銀行", "SinoPac Bank")
+    "OTHER", "其他" -> uiText("其他", "Other")
+    else -> value
 }

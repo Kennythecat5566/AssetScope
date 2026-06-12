@@ -13,12 +13,15 @@ import kotlinx.coroutines.launch
 import tw.kensuke.assetscope.data.PortfolioRepository
 import tw.kensuke.assetscope.domain.PortfolioCalculator
 import tw.kensuke.assetscope.domain.model.ExchangeRates
+import tw.kensuke.assetscope.domain.model.AppSettings
+import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.Expense
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.MarketSummary
 import tw.kensuke.assetscope.domain.model.PortfolioSummary
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.Transaction
+import tw.kensuke.assetscope.domain.model.UiLanguage
 
 data class PortfolioUiState(
     val holdings: List<Holding> = emptyList(),
@@ -30,6 +33,7 @@ data class PortfolioUiState(
     val expenses: List<Expense> = emptyList(),
     val performance: PerformanceSummary = PerformanceSummary(),
     val marketSummaries: Map<String, MarketSummary> = emptyMap(),
+    val appSettings: AppSettings = AppSettings(),
     val message: String? = null,
 )
 
@@ -59,11 +63,13 @@ class PortfolioViewModel(
         portfolioState,
         repository.autoSyncFolder,
         repository.serverUrl,
+        repository.appSettings,
         message,
-    ) { portfolio, autoSyncFolder, serverUrl, currentMessage ->
+    ) { portfolio, autoSyncFolder, serverUrl, appSettings, currentMessage ->
         portfolio.copy(
             autoSyncFolder = autoSyncFolder,
             serverUrl = serverUrl,
+            appSettings = appSettings,
             message = currentMessage,
         )
     }.stateIn(
@@ -76,9 +82,12 @@ class PortfolioViewModel(
         viewModelScope.launch {
             message.value = runCatching {
                 val result = repository.importCsv(content)
-                "已匯入 ${result.importedCount} 筆，略過 ${result.skippedCount} 筆"
+                localized(
+                    "已匯入 ${result.importedCount} 筆，略過 ${result.skippedCount} 筆",
+                    "Imported ${result.importedCount}; skipped ${result.skippedCount}",
+                )
             }.getOrElse { error ->
-                error.message ?: "匯入失敗"
+                error.message ?: localized("匯入失敗", "Import failed")
             }
         }
     }
@@ -88,9 +97,12 @@ class PortfolioViewModel(
             message.value = runCatching {
                 repository.configureAutoSync(folderUri)
                 val result = repository.syncFromConfiguredFolder()
-                "自動同步已啟用，已從 ${result.fileName} 匯入 ${result.importedCount} 筆"
+                localized(
+                    "自動同步已啟用，已從 ${result.fileName} 匯入 ${result.importedCount} 筆",
+                    "Auto-sync enabled. Imported ${result.importedCount} from ${result.fileName}",
+                )
             }.getOrElse { error ->
-                error.message ?: "無法設定自動同步"
+                error.message ?: localized("無法設定自動同步", "Could not enable auto-sync")
             }
         }
     }
@@ -99,9 +111,12 @@ class PortfolioViewModel(
         viewModelScope.launch {
             message.value = runCatching {
                 val result = repository.syncFromConfiguredFolder()
-                "已從 ${result.fileName} 同步 ${result.importedCount} 筆"
+                localized(
+                    "已從 ${result.fileName} 同步 ${result.importedCount} 筆",
+                    "Synced ${result.importedCount} from ${result.fileName}",
+                )
             }.getOrElse { error ->
-                error.message ?: "同步失敗"
+                error.message ?: localized("同步失敗", "Sync failed")
             }
         }
     }
@@ -109,7 +124,7 @@ class PortfolioViewModel(
     fun disableAutoSync() {
         viewModelScope.launch {
             repository.disableAutoSync()
-            message.value = "已停用資料夾自動同步"
+            message.value = localized("已停用資料夾自動同步", "Folder auto-sync disabled")
         }
     }
 
@@ -117,9 +132,12 @@ class PortfolioViewModel(
         viewModelScope.launch {
             message.value = runCatching {
                 val result = repository.configureServer(baseUrl, apiToken)
-                "電腦同步已啟用，取得 ${result.importedCount} 筆資產"
+                localized(
+                    "電腦同步已啟用，取得 ${result.importedCount} 筆資產",
+                    "PC sync enabled. Received ${result.importedCount} assets",
+                )
             }.getOrElse { error ->
-                error.message ?: "無法連接電腦伺服器"
+                error.message ?: localized("無法連接電腦伺服器", "Could not connect to PC server")
             }
         }
     }
@@ -128,9 +146,12 @@ class PortfolioViewModel(
         viewModelScope.launch {
             message.value = runCatching {
                 val result = repository.syncFromServer()
-                "已從 ${result.sourceCount} 個來源同步 ${result.importedCount} 筆"
+                localized(
+                    "已從 ${result.sourceCount} 個來源同步 ${result.importedCount} 筆",
+                    "Synced ${result.importedCount} assets from ${result.sourceCount} sources",
+                )
             }.getOrElse { error ->
-                error.message ?: "電腦同步失敗"
+                error.message ?: localized("電腦同步失敗", "PC sync failed")
             }
         }
     }
@@ -138,20 +159,31 @@ class PortfolioViewModel(
     fun disableServerSync() {
         viewModelScope.launch {
             repository.disableServerSync()
-            message.value = "已停用電腦伺服器同步"
+            message.value = localized("已停用電腦伺服器同步", "PC server sync disabled")
         }
     }
 
     fun resetSampleData() {
         viewModelScope.launch {
             repository.resetToSampleData()
-            message.value = "已還原範例資料"
+            message.value = localized("已還原範例資料", "Sample data restored")
         }
     }
 
     fun clearMessage() {
         message.value = null
     }
+
+    fun setDisplayCurrency(currency: Currency) {
+        viewModelScope.launch { repository.setDisplayCurrency(currency) }
+    }
+
+    fun setUiLanguage(language: UiLanguage) {
+        viewModelScope.launch { repository.setUiLanguage(language) }
+    }
+
+    private fun localized(zhTw: String, en: String): String =
+        if (repository.appSettings.value.language == UiLanguage.EN) en else zhTw
 
     companion object {
         fun factory(repository: PortfolioRepository): ViewModelProvider.Factory =

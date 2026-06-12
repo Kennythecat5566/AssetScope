@@ -18,6 +18,16 @@ enum class Currency {
     USD,
 }
 
+enum class UiLanguage {
+    ZH_TW,
+    EN,
+}
+
+data class AppSettings(
+    val displayCurrency: Currency = Currency.TWD,
+    val language: UiLanguage = UiLanguage.ZH_TW,
+)
+
 enum class TransactionType(val displayName: String) {
     BUY("買入"),
     SELL("賣出"),

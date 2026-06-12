@@ -52,11 +52,11 @@ private enum class ChartMode {
     TREND,
 }
 
-private enum class ChartPeriod(val label: String, val days: Int) {
-    DAILY("日線", 30),
-    MONTHLY("月線", 90),
-    QUARTERLY("季線", 180),
-    YEARLY("年線", 250),
+private enum class ChartPeriod(val days: Int) {
+    DAILY(30),
+    MONTHLY(90),
+    QUARTERLY(180),
+    YEARLY(250),
 }
 
 @Composable
@@ -93,12 +93,14 @@ fun StockChartDialog(
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            "日線 · ${history?.source ?: "載入中"}",
+                            "${uiText("日線", "Daily")} · ${
+                                history?.source ?: uiText("載入中", "Loading")
+                            }",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.secondary,
                         )
                     }
-                    TextButton(onClick = onDismiss) { Text("關閉") }
+                    TextButton(onClick = onDismiss) { Text(uiText("關閉", "Close")) }
                 }
                 Spacer(Modifier.height(18.dp))
 
@@ -134,12 +136,12 @@ fun StockChartDialog(
                         Spacer(Modifier.height(16.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                             ChartModeButton(
-                                text = "K 線",
+                                text = uiText("K 線", "Candles"),
                                 selected = mode == ChartMode.CANDLE,
                                 onClick = { mode = ChartMode.CANDLE },
                             )
                             ChartModeButton(
-                                text = "趨勢",
+                                text = uiText("趨勢", "Trend"),
                                 selected = mode == ChartMode.TREND,
                                 onClick = { mode = ChartMode.TREND },
                             )
@@ -167,8 +169,10 @@ fun StockChartDialog(
                         )
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            "X 軸：日期　Y 軸：價格（${displayCurrency.name}）"
-                                + "　雙指縮放、左右拖曳檢視",
+                            uiText(
+                                "X 軸：日期　Y 軸：價格（${displayCurrency.name}）　雙指縮放、左右拖曳檢視",
+                                "X: Date  Y: Price (${displayCurrency.name})  Pinch to zoom and drag to inspect",
+                            ),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -204,7 +208,15 @@ private fun ChartPeriodButton(
             },
         ),
     ) {
-        Text(period.label, style = MaterialTheme.typography.labelSmall)
+        Text(
+            when (period) {
+                ChartPeriod.DAILY -> uiText("日線", "1M")
+                ChartPeriod.MONTHLY -> uiText("月線", "3M")
+                ChartPeriod.QUARTERLY -> uiText("季線", "6M")
+                ChartPeriod.YEARLY -> uiText("年線", "1Y")
+            },
+            style = MaterialTheme.typography.labelSmall,
+        )
     }
 }
 
@@ -227,16 +239,22 @@ private fun HistorySummary(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        ChartMetric("最新", (last.close * multiplier).asPrice(displayCurrency))
-        ChartMetric("期間", "${if (change >= 0) "+" else ""}${"%.1f".format(change * 100)}%", color)
-        ChartMetric("最高", (high * multiplier).asPrice(displayCurrency))
-        ChartMetric("最低", (low * multiplier).asPrice(displayCurrency))
+        ChartMetric(uiText("最新", "Latest"), (last.close * multiplier).asPrice(displayCurrency))
+        ChartMetric(
+            uiText("期間", "Period"),
+            "${if (change >= 0) "+" else ""}${"%.1f".format(change * 100)}%",
+            color,
+        )
+        ChartMetric(uiText("最高", "High"), (high * multiplier).asPrice(displayCurrency))
+        ChartMetric(uiText("最低", "Low"), (low * multiplier).asPrice(displayCurrency))
     }
     Spacer(Modifier.height(12.dp))
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     Spacer(Modifier.height(10.dp))
     Text(
-        "持有均價 ${(averageCost * multiplier).asPrice(displayCurrency)}",
+        "${uiText("持有均價", "Average cost")} ${
+            (averageCost * multiplier).asPrice(displayCurrency)
+        }",
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )

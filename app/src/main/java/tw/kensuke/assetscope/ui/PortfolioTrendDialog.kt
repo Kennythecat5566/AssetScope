@@ -64,17 +64,17 @@ fun PortfolioTrendDialog(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            "總資產趨勢",
+                            uiText("總資產趨勢", "Net worth trend"),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            "每日同步快照",
+                            uiText("每日同步快照", "Daily sync snapshots"),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.secondary,
                         )
                     }
-                    TextButton(onClick = onDismiss) { Text("關閉") }
+                    TextButton(onClick = onDismiss) { Text(uiText("關閉", "Close")) }
                 }
                 Spacer(Modifier.height(18.dp))
                 when {
@@ -98,14 +98,19 @@ fun PortfolioTrendDialog(
                         )
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            "X 軸：日期時間　Y 軸：資產金額（${displayCurrency.name}）"
-                                + "　雙指縮放、左右拖曳檢視",
+                            uiText(
+                                "X 軸：日期時間　Y 軸：資產金額（${displayCurrency.name}）　雙指縮放、左右拖曳檢視",
+                                "X: Date and time  Y: Net worth (${displayCurrency.name})  Pinch to zoom and drag to inspect",
+                            ),
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                     history != null -> Text(
-                        "目前只有一筆快照。伺服器每次同步會更新當日資料，累積至少兩天後即可顯示趨勢。",
+                        uiText(
+                            "目前只有一筆快照。伺服器每次同步會更新當日資料，累積至少兩天後即可顯示趨勢。",
+                            "Only one snapshot is available. Sync on at least two different days to display a trend.",
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }

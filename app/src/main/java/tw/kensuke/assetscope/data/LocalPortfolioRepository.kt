@@ -10,6 +10,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import tw.kensuke.assetscope.domain.model.AssetType
+import tw.kensuke.assetscope.domain.model.AppSettings
 import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.ExchangeRates
 import tw.kensuke.assetscope.domain.model.Expense
@@ -23,6 +24,7 @@ import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PriceHistory
 import tw.kensuke.assetscope.domain.model.Transaction
 import tw.kensuke.assetscope.domain.model.TransactionType
+import tw.kensuke.assetscope.domain.model.UiLanguage
 
 class LocalPortfolioRepository(
     context: Context,
@@ -39,6 +41,7 @@ class LocalPortfolioRepository(
     private val mutableServerUrl = MutableStateFlow(preferences.getString(KEY_SERVER_URL, null))
     private val mutableInsights = MutableStateFlow(loadInsights())
     private val mutableMarketSummaries = MutableStateFlow(loadMarketSummaries())
+    private val mutableAppSettings = MutableStateFlow(loadAppSettings())
     private val preferenceListener =
         android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
@@ -49,6 +52,9 @@ class LocalPortfolioRepository(
                 KEY_SERVER_URL -> mutableServerUrl.value = preferences.getString(KEY_SERVER_URL, null)
                 KEY_INSIGHTS -> mutableInsights.value = loadInsights()
                 KEY_MARKET_SUMMARIES -> mutableMarketSummaries.value = loadMarketSummaries()
+                KEY_DISPLAY_CURRENCY, KEY_UI_LANGUAGE -> {
+                    mutableAppSettings.value = loadAppSettings()
+                }
                 KEY_USD_TO_TWD -> {
                     mutableExchangeRates.value = mutableExchangeRates.value.copy(
                         usdToTwd = preferences.getFloat(
@@ -66,6 +72,7 @@ class LocalPortfolioRepository(
     override val serverUrl: StateFlow<String?> = mutableServerUrl
     override val insights: StateFlow<PortfolioInsights> = mutableInsights
     override val marketSummaries: StateFlow<Map<String, MarketSummary>> = mutableMarketSummaries
+    override val appSettings: StateFlow<AppSettings> = mutableAppSettings
 
     init {
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
@@ -195,6 +202,16 @@ class LocalPortfolioRepository(
         refreshMarketSummariesSafely(baseUrl, token)
     }
 
+    override suspend fun setDisplayCurrency(currency: Currency) {
+        preferences.edit().putString(KEY_DISPLAY_CURRENCY, currency.name).apply()
+        mutableAppSettings.value = mutableAppSettings.value.copy(displayCurrency = currency)
+    }
+
+    override suspend fun setUiLanguage(language: UiLanguage) {
+        preferences.edit().putString(KEY_UI_LANGUAGE, language.name).apply()
+        mutableAppSettings.value = mutableAppSettings.value.copy(language = language)
+    }
+
     private fun refreshMarketSummariesSafely(baseUrl: String, token: String) {
         val summaries = runCatching {
             PortfolioApiClient().fetchMarketSummaries(
@@ -257,6 +274,19 @@ class LocalPortfolioRepository(
             }.associateBy(MarketSummary::key)
         }.getOrDefault(emptyMap())
     }
+
+    private fun loadAppSettings(): AppSettings = AppSettings(
+        displayCurrency = runCatching {
+            Currency.valueOf(
+                preferences.getString(KEY_DISPLAY_CURRENCY, Currency.TWD.name).orEmpty(),
+            )
+        }.getOrDefault(Currency.TWD),
+        language = runCatching {
+            UiLanguage.valueOf(
+                preferences.getString(KEY_UI_LANGUAGE, UiLanguage.ZH_TW.name).orEmpty(),
+            )
+        }.getOrDefault(UiLanguage.ZH_TW),
+    )
 
     private fun saveMarketSummaries(summaries: List<MarketSummary>) {
         val array = JSONArray()
@@ -434,6 +464,8 @@ class LocalPortfolioRepository(
         const val KEY_USD_TO_TWD = "usd_to_twd"
         const val KEY_INSIGHTS = "portfolio_insights"
         const val KEY_MARKET_SUMMARIES = "market_summaries"
+        const val KEY_DISPLAY_CURRENCY = "display_currency"
+        const val KEY_UI_LANGUAGE = "ui_language"
 
         val sampleHoldings = listOf(
             Holding(
