@@ -22,8 +22,9 @@ def test_portfolio_requires_token(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 200
-    assert response.json()["schema_version"] == 2
+    assert response.json()["schema_version"] == 3
     assert response.json()["transactions"] == []
+    assert response.json()["expenses"] == []
     history = client.get(
         "/api/v1/portfolio/history",
         headers={"Authorization": "Bearer a-long-enough-test-token"},

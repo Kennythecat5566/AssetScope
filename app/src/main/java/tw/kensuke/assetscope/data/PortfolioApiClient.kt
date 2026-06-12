@@ -1,11 +1,15 @@
 package tw.kensuke.assetscope.data
 
+import org.json.JSONArray
 import org.json.JSONObject
 import tw.kensuke.assetscope.domain.model.AssetType
 import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.ExchangeRates
+import tw.kensuke.assetscope.domain.model.Expense
+import tw.kensuke.assetscope.domain.model.ExpenseCategory
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.Institution
+import tw.kensuke.assetscope.domain.model.MarketSummary
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
@@ -121,9 +125,58 @@ class PortfolioApiClient {
         }
     }
 
+    fun fetchMarketSummaries(
+        baseUrl: String,
+        apiToken: String,
+        holdings: List<Holding>,
+    ): List<MarketSummary> {
+        val marketHoldings = holdings.filter {
+            it.assetType == AssetType.STOCK || it.assetType == AssetType.ETF
+        }
+        if (marketHoldings.isEmpty()) return emptyList()
+
+        val normalizedUrl = validateAndNormalizeBaseUrl(baseUrl)
+        val token = normalizeApiToken(apiToken)
+        val connection = URI("$normalizedUrl/api/v1/market/summaries")
+            .toURL()
+            .openConnection() as HttpURLConnection
+        return try {
+            connection.requestMethod = "POST"
+            connection.doOutput = true
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 90_000
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            val items = JSONArray()
+            marketHoldings.forEach { holding ->
+                items.put(
+                    JSONObject()
+                        .put("institution", holding.institution.name)
+                        .put("symbol", holding.symbol),
+                )
+            }
+            connection.outputStream.bufferedWriter().use {
+                it.write(JSONObject().put("items", items).toString())
+            }
+            val status = connection.responseCode
+            val body = (if (status in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                .orEmpty()
+            require(status in 200..299) { errorMessage(status, body) }
+            val summaries = JSONObject(body).getJSONArray("summaries")
+            List(summaries.length()) { index ->
+                summaries.getJSONObject(index).toMarketSummary()
+            }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun parse(body: String): RemotePortfolio {
         val root = JSONObject(body)
-        require(root.getInt("schema_version") in 1..2) { "不支援的伺服器資料版本" }
+        require(root.getInt("schema_version") in 1..3) { "不支援的伺服器資料版本" }
         val exchangeRates = root.getJSONObject("exchange_rates")
         val rate = exchangeRates.getDouble("usd_to_twd")
         val holdingArray = root.getJSONArray("holdings")
@@ -132,6 +185,9 @@ class PortfolioApiClient {
         }
         val transactions = root.optJSONArray("transactions")?.let { array ->
             List(array.length()) { index -> array.getJSONObject(index).toTransaction() }
+        }.orEmpty()
+        val expenses = root.optJSONArray("expenses")?.let { array ->
+            List(array.length()) { index -> array.getJSONObject(index).toExpense() }
         }.orEmpty()
         val performance = root.optJSONObject("performance")?.toPerformance()
             ?: PerformanceSummary()
@@ -146,6 +202,7 @@ class PortfolioApiClient {
             sourceCount = root.getJSONArray("sources").length(),
             insights = PortfolioInsights(
                 transactions = transactions,
+                expenses = expenses,
                 performance = performance,
             ),
         )
@@ -180,6 +237,19 @@ class PortfolioApiClient {
         settledDate = optString("settled_date").takeIf { it.isNotBlank() && it != "null" },
     )
 
+    private fun JSONObject.toExpense(): Expense = Expense(
+        id = getString("id"),
+        institution = Institution.valueOf(getString("institution")),
+        transactionDate = getString("transaction_date"),
+        postedDate = optString("posted_date").takeIf { it.isNotBlank() && it != "null" },
+        merchant = getString("merchant"),
+        category = ExpenseCategory.valueOf(getString("category")),
+        amount = getDouble("amount"),
+        currency = Currency.valueOf(getString("currency")),
+        cardLastFour = optString("card_last_four"),
+        note = optString("note"),
+    )
+
     private fun JSONObject.toPerformance(): PerformanceSummary = PerformanceSummary(
         realizedProfit = getDouble("realized_profit"),
         unrealizedProfit = getDouble("unrealized_profit"),
@@ -208,6 +278,20 @@ class PortfolioApiClient {
                     )
                 }
             },
+        )
+    }
+
+    private fun JSONObject.toMarketSummary(): MarketSummary {
+        val closeArray = getJSONArray("closes")
+        return MarketSummary(
+            institution = Institution.valueOf(getString("institution")),
+            symbol = getString("symbol"),
+            currency = Currency.valueOf(getString("currency")),
+            latestPrice = getDouble("latest_price"),
+            change = getDouble("change"),
+            changeRate = getDouble("change_rate"),
+            closes = List(closeArray.length()) { index -> closeArray.getDouble(index) },
+            source = getString("source"),
         )
     }
 

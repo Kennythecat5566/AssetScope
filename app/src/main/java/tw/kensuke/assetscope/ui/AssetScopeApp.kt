@@ -11,6 +11,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +68,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -81,8 +84,10 @@ import tw.kensuke.assetscope.data.AppUpdateManager
 import tw.kensuke.assetscope.data.PortfolioRepository
 import tw.kensuke.assetscope.domain.model.Allocation
 import tw.kensuke.assetscope.domain.model.Currency
+import tw.kensuke.assetscope.domain.model.Expense
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.Institution
+import tw.kensuke.assetscope.domain.model.MarketSummary
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PriceHistory
@@ -151,6 +156,11 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     LaunchedEffect(state.serverUrl) {
         if (state.serverUrl != null) {
             runCatching { repository.syncFromServer() }
+        }
+    }
+    LaunchedEffect(state.serverUrl, state.holdings) {
+        if (state.serverUrl != null) {
+            runCatching { repository.refreshMarketSummaries() }
         }
     }
     LaunchedEffect(updateMessage) {
@@ -341,6 +351,9 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                             items(state.holdings, key = Holding::id) { holding ->
                                 HoldingRow(
                                     holding = holding,
+                                    marketSummary = state.marketSummaries[
+                                        "${holding.institution.name}:${holding.symbol}"
+                                    ],
                                     displayCurrency = displayCurrency,
                                     usdToTwd = state.rates.usdToTwd,
                                     onShowChart = {
@@ -371,6 +384,15 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                             item {
                                 TransactionPage(
                                     transactions = state.transactions,
+                                    displayCurrency = displayCurrency,
+                                    usdToTwd = state.rates.usdToTwd,
+                                )
+                            }
+                        }
+                        AppPage.EXPENSES -> {
+                            item {
+                                ExpensePage(
+                                    expenses = state.expenses,
                                     displayCurrency = displayCurrency,
                                     usdToTwd = state.rates.usdToTwd,
                                 )
@@ -488,6 +510,182 @@ private fun PageNavigation(
                 ),
             ) {
                 Text(page.label, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExpensePage(
+    expenses: List<Expense>,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+) {
+    val latestMonth = expenses.maxOfOrNull { it.transactionDate.take(7) }
+    val monthlyExpenses = expenses.filter { it.transactionDate.startsWith(latestMonth.orEmpty()) }
+    val totalTwd = monthlyExpenses.sumOf { expense ->
+        expense.amount * if (expense.currency == Currency.USD) usdToTwd else 1.0
+    }
+    val categoryTotals = monthlyExpenses
+        .groupBy { it.category }
+        .mapValues { (_, items) ->
+            items.sumOf { expense ->
+                expense.amount * if (expense.currency == Currency.USD) usdToTwd else 1.0
+            }
+        }
+        .filterValues { it > 0 }
+        .toList()
+        .sortedByDescending { it.second }
+    val positiveTotal = categoryTotals.sumOf { it.second }
+    val allocations = categoryTotals.map { (category, value) ->
+        Allocation(
+            label = category.displayName,
+            valueTwd = value,
+            ratio = if (positiveTotal == 0.0) 0.0 else value / positiveTotal,
+        )
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        SectionHeader(
+            title = "日常花費",
+            trailing = latestMonth?.replace("-", " / ") ?: "尚無資料",
+        )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    "本月信用卡支出",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    totalTwd
+                        .toDisplayCurrency(displayCurrency, usdToTwd)
+                        .asMoney(displayCurrency),
+                    style = MaterialTheme.typography.headlineMedium,
+                )
+                Text(
+                    "${monthlyExpenses.size} 筆永豐信用卡交易",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (monthlyExpenses.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            ) {
+                Text(
+                    "尚無刷卡紀錄。將永豐官方匯出的 CSV 放入電腦伺服器的 data/imports 後同步。",
+                    modifier = Modifier.padding(20.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            return
+        }
+        if (allocations.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    SectionHeader("支出分類", "${allocations.size} 類")
+                    Spacer(Modifier.height(16.dp))
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        AllocationPie(
+                            allocations = allocations,
+                            colors = allocationColors,
+                            modifier = Modifier.size(190.dp),
+                        )
+                    }
+                    Spacer(Modifier.height(16.dp))
+                    allocations.forEachIndexed { index, allocation ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(10.dp)
+                                    .background(
+                                        allocationColors[index % allocationColors.size],
+                                        CircleShape,
+                                    ),
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(allocation.label, modifier = Modifier.weight(1f))
+                            Text(
+                                allocation.valueTwd
+                                    .toDisplayCurrency(displayCurrency, usdToTwd)
+                                    .asMoney(displayCurrency),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                SectionHeader("刷卡明細", "最近 ${monthlyExpenses.size} 筆")
+                Spacer(Modifier.height(8.dp))
+                monthlyExpenses.forEachIndexed { index, expense ->
+                    val multiplier = currencyMultiplier(
+                        expense.currency,
+                        displayCurrency,
+                        usdToTwd,
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                expense.merchant,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                buildString {
+                                    append(expense.transactionDate)
+                                    append(" · ")
+                                    append(expense.category.displayName)
+                                    if (expense.cardLastFour.isNotBlank()) {
+                                        append(" · •")
+                                        append(expense.cardLastFour)
+                                    }
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text(
+                            (expense.amount * multiplier).asSignedMoney(displayCurrency),
+                            color = if (expense.amount < 0) lossColor else Color.Unspecified,
+                        )
+                    }
+                    if (index != monthlyExpenses.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                }
             }
         }
     }
@@ -1300,23 +1498,29 @@ private fun AllocationPie(
 @Composable
 private fun HoldingRow(
     holding: Holding,
+    marketSummary: MarketSummary?,
     displayCurrency: Currency,
     usdToTwd: Double,
     onShowChart: () -> Unit,
 ) {
     val multiplier = currencyMultiplier(holding.currency, displayCurrency, usdToTwd)
+    val isMarketAsset = holding.assetType ==
+        tw.kensuke.assetscope.domain.model.AssetType.STOCK ||
+        holding.assetType == tw.kensuke.assetscope.domain.model.AssetType.ETF
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = isMarketAsset, onClick = onShowChart),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = MaterialTheme.shapes.medium,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(46.dp)
                         .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
@@ -1327,8 +1531,12 @@ private fun HoldingRow(
                     )
                 }
                 Spacer(Modifier.size(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(holding.symbol, fontWeight = FontWeight.Bold)
+                Column(modifier = Modifier.weight(1.2f)) {
+                    Text(
+                        holding.symbol,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium,
+                    )
                     Text(
                         text = holding.name,
                         maxLines = 1,
@@ -1336,23 +1544,47 @@ private fun HoldingRow(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    Text(
+                        "${holding.quantity.asQuantity()} 股／單位",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (isMarketAsset) {
+                    MiniTrendChart(
+                        values = marketSummary?.closes.orEmpty(),
+                        positive = (marketSummary?.change ?: holding.unrealizedProfit) >= 0,
+                        modifier = Modifier
+                            .width(76.dp)
+                            .height(48.dp)
+                            .padding(horizontal = 8.dp),
+                    )
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        (holding.marketValue * multiplier).asMoney(displayCurrency),
+                        ((marketSummary?.latestPrice ?: holding.marketPrice) * multiplier)
+                            .asMoney(displayCurrency),
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = (holding.unrealizedProfit * multiplier)
+                        text = marketSummary?.let {
+                            "${(it.change * multiplier).asSignedMoney(displayCurrency)} " +
+                                "(${it.changeRate.asPercent()})"
+                        } ?: (holding.unrealizedProfit * multiplier)
                             .asSignedMoney(displayCurrency),
-                        color = if (holding.unrealizedProfit >= 0) profitColor else lossColor,
+                        color = if ((marketSummary?.change ?: holding.unrealizedProfit) >= 0) {
+                            marketUpColor
+                        } else {
+                            marketDownColor
+                        },
                         style = MaterialTheme.typography.bodySmall,
+                        maxLines = 1,
                     )
                 }
             }
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(8.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(7.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1363,7 +1595,7 @@ private fun HoldingRow(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    "估價 ${(holding.marketPrice * multiplier).asMoney(displayCurrency)}",
+                    "市值 ${(holding.marketValue * multiplier).asMoney(displayCurrency)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1373,38 +1605,50 @@ private fun HoldingRow(
                     color = if (holding.returnRate >= 0) profitColor else lossColor,
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
+            if (isMarketAsset) {
+                Spacer(Modifier.height(5.dp))
                 Text(
-                    "${holding.institution.displayName} · ${holding.accountName}",
+                    "點擊查看 K 線與趨勢 · ${marketSummary?.source ?: "行情載入中"}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.secondary,
                 )
-                Text(
-                    "${holding.quantity.asQuantity()} 股／單位",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            if (holding.assetType == tw.kensuke.assetscope.domain.model.AssetType.STOCK ||
-                holding.assetType == tw.kensuke.assetscope.domain.model.AssetType.ETF
-            ) {
-                Spacer(Modifier.height(12.dp))
-                Button(
-                    onClick = onShowChart,
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.primary,
-                    ),
-                ) {
-                    Text("查看 K 線與趨勢")
-                }
             }
         }
+    }
+}
+
+@Composable
+private fun MiniTrendChart(
+    values: List<Double>,
+    positive: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val color = if (positive) marketUpColor else marketDownColor
+    val placeholderColor = MaterialTheme.colorScheme.outlineVariant
+    Canvas(modifier = modifier) {
+        if (values.size < 2) {
+            drawLine(
+                color = placeholderColor,
+                start = Offset(0f, size.height / 2),
+                end = Offset(size.width, size.height / 2),
+                strokeWidth = 1.dp.toPx(),
+            )
+            return@Canvas
+        }
+        val min = values.min()
+        val max = values.max()
+        val range = (max - min).takeIf { it > 0 } ?: 1.0
+        val path = Path()
+        values.forEachIndexed { index, value ->
+            val x = size.width * index / (values.size - 1)
+            val y = size.height - ((value - min) / range * size.height).toFloat()
+            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = 2.5.dp.toPx()),
+        )
     }
 }
 
@@ -1521,6 +1765,8 @@ private val Holding.returnRate: Double
 
 private val profitColor = Color(0xFF9A5D50)
 private val lossColor = Color(0xFF627066)
+private val marketUpColor = Color(0xFF2F8F76)
+private val marketDownColor = Color(0xFFC65D5D)
 private val allocationColors = listOf(
     Color(0xFF6F7965),
     Color(0xFFB68468),
@@ -1541,6 +1787,7 @@ private enum class AppPage(val label: String) {
     OVERVIEW("總覽"),
     HOLDINGS("持股"),
     TRANSACTIONS("交易"),
+    EXPENSES("消費"),
     SYNC("同步"),
 }
 

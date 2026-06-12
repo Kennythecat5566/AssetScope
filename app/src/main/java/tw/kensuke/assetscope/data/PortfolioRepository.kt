@@ -4,6 +4,7 @@ import kotlinx.coroutines.flow.StateFlow
 import android.net.Uri
 import tw.kensuke.assetscope.domain.model.ExchangeRates
 import tw.kensuke.assetscope.domain.model.Holding
+import tw.kensuke.assetscope.domain.model.MarketSummary
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PriceHistory
@@ -14,6 +15,7 @@ interface PortfolioRepository {
     val autoSyncFolder: StateFlow<String?>
     val serverUrl: StateFlow<String?>
     val insights: StateFlow<PortfolioInsights>
+    val marketSummaries: StateFlow<Map<String, MarketSummary>>
 
     suspend fun importCsv(content: String): ImportResult
     suspend fun configureAutoSync(folderUri: Uri)
@@ -23,6 +25,7 @@ interface PortfolioRepository {
     suspend fun syncFromServer(): ServerSyncResult
     suspend fun loadPriceHistory(holding: Holding, days: Int = 90): PriceHistory
     suspend fun loadPortfolioHistory(days: Int = 365): PortfolioHistory
+    suspend fun refreshMarketSummaries()
     suspend fun disableServerSync()
     suspend fun resetToSampleData()
 }

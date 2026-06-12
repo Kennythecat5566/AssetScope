@@ -3,9 +3,11 @@ import secrets
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 
 from app.config import Settings, get_settings
-from app.connectors.price_history import load_price_history
+from app.connectors.price_history import load_market_summaries, load_price_history
 from app.models import (
     Institution,
+    MarketSummariesRequest,
+    MarketSummariesResponse,
     PortfolioHistoryResponse,
     PortfolioResponse,
     PriceHistoryResponse,
@@ -84,6 +86,20 @@ def price_history(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(error),
         ) from error
+
+
+@app.post(
+    "/api/v1/market/summaries",
+    response_model=MarketSummariesResponse,
+    dependencies=[Depends(authorize)],
+)
+def market_summaries(
+    request: MarketSummariesRequest,
+    settings: Settings = Depends(get_settings),
+) -> MarketSummariesResponse:
+    return MarketSummariesResponse(
+        summaries=load_market_summaries(settings, request.items),
+    )
 
 
 @app.get(

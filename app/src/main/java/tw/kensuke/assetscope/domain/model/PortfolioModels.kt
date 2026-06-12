@@ -40,6 +40,32 @@ data class Transaction(
     val settledDate: String?,
 )
 
+enum class ExpenseCategory(val displayName: String) {
+    DINING("餐飲"),
+    TRANSPORT("交通"),
+    SHOPPING("購物"),
+    GROCERIES("日用品"),
+    ENTERTAINMENT("娛樂"),
+    SUBSCRIPTION("訂閱"),
+    TRAVEL("旅遊"),
+    HEALTH("醫療"),
+    UTILITIES("水電電信"),
+    OTHER("其他"),
+}
+
+data class Expense(
+    val id: String,
+    val institution: Institution,
+    val transactionDate: String,
+    val postedDate: String?,
+    val merchant: String,
+    val category: ExpenseCategory,
+    val amount: Double,
+    val currency: Currency,
+    val cardLastFour: String,
+    val note: String,
+)
+
 data class PerformanceSummary(
     val realizedProfit: Double = 0.0,
     val unrealizedProfit: Double = 0.0,
@@ -52,6 +78,7 @@ data class PerformanceSummary(
 
 data class PortfolioInsights(
     val transactions: List<Transaction> = emptyList(),
+    val expenses: List<Expense> = emptyList(),
     val performance: PerformanceSummary = PerformanceSummary(),
 )
 
@@ -92,6 +119,20 @@ data class PriceHistory(
     val source: String,
     val candles: List<PriceCandle>,
 )
+
+data class MarketSummary(
+    val institution: Institution,
+    val symbol: String,
+    val currency: Currency,
+    val latestPrice: Double,
+    val change: Double,
+    val changeRate: Double,
+    val closes: List<Double>,
+    val source: String,
+) {
+    val key: String
+        get() = "${institution.name}:$symbol"
+}
 
 data class ExchangeRates(
     val usdToTwd: Double = 32.4,

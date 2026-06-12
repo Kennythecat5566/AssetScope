@@ -13,7 +13,9 @@ import kotlinx.coroutines.launch
 import tw.kensuke.assetscope.data.PortfolioRepository
 import tw.kensuke.assetscope.domain.PortfolioCalculator
 import tw.kensuke.assetscope.domain.model.ExchangeRates
+import tw.kensuke.assetscope.domain.model.Expense
 import tw.kensuke.assetscope.domain.model.Holding
+import tw.kensuke.assetscope.domain.model.MarketSummary
 import tw.kensuke.assetscope.domain.model.PortfolioSummary
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.Transaction
@@ -25,7 +27,9 @@ data class PortfolioUiState(
     val autoSyncFolder: String? = null,
     val serverUrl: String? = null,
     val transactions: List<Transaction> = emptyList(),
+    val expenses: List<Expense> = emptyList(),
     val performance: PerformanceSummary = PerformanceSummary(),
+    val marketSummaries: Map<String, MarketSummary> = emptyMap(),
     val message: String? = null,
 )
 
@@ -38,13 +42,16 @@ class PortfolioViewModel(
         repository.holdings,
         repository.exchangeRates,
         repository.insights,
-    ) { holdings, rates, insights ->
+        repository.marketSummaries,
+    ) { holdings, rates, insights, marketSummaries ->
         PortfolioUiState(
             holdings = holdings,
             rates = rates,
             summary = PortfolioCalculator.calculate(holdings, rates),
             transactions = insights.transactions,
+            expenses = insights.expenses,
             performance = insights.performance,
+            marketSummaries = marketSummaries,
         )
     }
 

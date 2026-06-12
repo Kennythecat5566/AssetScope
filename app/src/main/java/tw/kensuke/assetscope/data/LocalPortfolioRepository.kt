@@ -12,8 +12,11 @@ import org.json.JSONObject
 import tw.kensuke.assetscope.domain.model.AssetType
 import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.ExchangeRates
+import tw.kensuke.assetscope.domain.model.Expense
+import tw.kensuke.assetscope.domain.model.ExpenseCategory
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.Institution
+import tw.kensuke.assetscope.domain.model.MarketSummary
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
@@ -35,6 +38,7 @@ class LocalPortfolioRepository(
     private val mutableAutoSyncFolder = MutableStateFlow(preferences.getString(KEY_SYNC_FOLDER, null))
     private val mutableServerUrl = MutableStateFlow(preferences.getString(KEY_SERVER_URL, null))
     private val mutableInsights = MutableStateFlow(loadInsights())
+    private val mutableMarketSummaries = MutableStateFlow(loadMarketSummaries())
     private val preferenceListener =
         android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
@@ -44,6 +48,7 @@ class LocalPortfolioRepository(
                 }
                 KEY_SERVER_URL -> mutableServerUrl.value = preferences.getString(KEY_SERVER_URL, null)
                 KEY_INSIGHTS -> mutableInsights.value = loadInsights()
+                KEY_MARKET_SUMMARIES -> mutableMarketSummaries.value = loadMarketSummaries()
                 KEY_USD_TO_TWD -> {
                     mutableExchangeRates.value = mutableExchangeRates.value.copy(
                         usdToTwd = preferences.getFloat(
@@ -60,6 +65,7 @@ class LocalPortfolioRepository(
     override val autoSyncFolder: StateFlow<String?> = mutableAutoSyncFolder
     override val serverUrl: StateFlow<String?> = mutableServerUrl
     override val insights: StateFlow<PortfolioInsights> = mutableInsights
+    override val marketSummaries: StateFlow<Map<String, MarketSummary>> = mutableMarketSummaries
 
     init {
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
@@ -179,6 +185,20 @@ class LocalPortfolioRepository(
             )
         }
 
+    override suspend fun refreshMarketSummaries() = withContext(Dispatchers.IO) {
+        val baseUrl = preferences.getString(KEY_SERVER_URL, null)
+            ?: return@withContext
+        val token = preferences.getString(KEY_SERVER_TOKEN, null)
+            ?: return@withContext
+        val summaries = PortfolioApiClient().fetchMarketSummaries(
+            baseUrl = baseUrl,
+            apiToken = token,
+            holdings = mutableHoldings.value,
+        )
+        mutableMarketSummaries.value = summaries.associateBy(MarketSummary::key)
+        saveMarketSummaries(summaries)
+    }
+
     private fun applyRemotePortfolio(remote: RemotePortfolio) {
         mutableHoldings.value = remote.holdings
         mutableExchangeRates.value = remote.rates
@@ -220,6 +240,22 @@ class LocalPortfolioRepository(
         preferences.edit().putString(KEY_HOLDINGS, array.toString()).apply()
     }
 
+    private fun loadMarketSummaries(): Map<String, MarketSummary> {
+        val stored = preferences.getString(KEY_MARKET_SUMMARIES, null) ?: return emptyMap()
+        return runCatching {
+            val array = JSONArray(stored)
+            List(array.length()) { index ->
+                array.getJSONObject(index).toMarketSummary()
+            }.associateBy(MarketSummary::key)
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun saveMarketSummaries(summaries: List<MarketSummary>) {
+        val array = JSONArray()
+        summaries.forEach { array.put(it.toJson()) }
+        preferences.edit().putString(KEY_MARKET_SUMMARIES, array.toString()).apply()
+    }
+
     private fun loadInsights(): PortfolioInsights {
         val stored = preferences.getString(KEY_INSIGHTS, null) ?: return PortfolioInsights()
         return runCatching {
@@ -229,6 +265,11 @@ class LocalPortfolioRepository(
                 transactions = List(transactions.length()) { index ->
                     transactions.getJSONObject(index).toTransaction()
                 },
+                expenses = root.optJSONArray("expenses")?.let { expenses ->
+                    List(expenses.length()) { index ->
+                        expenses.getJSONObject(index).toExpense()
+                    }
+                }.orEmpty(),
                 performance = root.getJSONObject("performance").toPerformance(),
             )
         }.getOrDefault(PortfolioInsights())
@@ -237,8 +278,11 @@ class LocalPortfolioRepository(
     private fun saveInsights(insights: PortfolioInsights) {
         val transactions = JSONArray()
         insights.transactions.forEach { transactions.put(it.toJson()) }
+        val expenses = JSONArray()
+        insights.expenses.forEach { expenses.put(it.toJson()) }
         val root = JSONObject()
             .put("transactions", transactions)
+            .put("expenses", expenses)
             .put("performance", insights.performance.toJson())
         preferences.edit().putString(KEY_INSIGHTS, root.toString()).apply()
     }
@@ -268,6 +312,31 @@ class LocalPortfolioRepository(
         averageCost = getDouble("averageCost"),
         marketPrice = getDouble("marketPrice"),
     )
+
+    private fun MarketSummary.toJson(): JSONObject = JSONObject().apply {
+        put("institution", institution.name)
+        put("symbol", symbol)
+        put("currency", currency.name)
+        put("latestPrice", latestPrice)
+        put("change", change)
+        put("changeRate", changeRate)
+        put("closes", JSONArray(closes))
+        put("source", source)
+    }
+
+    private fun JSONObject.toMarketSummary(): MarketSummary {
+        val values = getJSONArray("closes")
+        return MarketSummary(
+            institution = Institution.valueOf(getString("institution")),
+            symbol = getString("symbol"),
+            currency = Currency.valueOf(getString("currency")),
+            latestPrice = getDouble("latestPrice"),
+            change = getDouble("change"),
+            changeRate = getDouble("changeRate"),
+            closes = List(values.length()) { index -> values.getDouble(index) },
+            source = getString("source"),
+        )
+    }
 
     private fun Transaction.toJson(): JSONObject = JSONObject().apply {
         put("id", id)
@@ -302,6 +371,32 @@ class LocalPortfolioRepository(
             .takeIf { it.isNotBlank() && it != "null" },
     )
 
+    private fun Expense.toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("institution", institution.name)
+        put("transactionDate", transactionDate)
+        put("postedDate", postedDate)
+        put("merchant", merchant)
+        put("category", category.name)
+        put("amount", amount)
+        put("currency", currency.name)
+        put("cardLastFour", cardLastFour)
+        put("note", note)
+    }
+
+    private fun JSONObject.toExpense(): Expense = Expense(
+        id = getString("id"),
+        institution = Institution.valueOf(getString("institution")),
+        transactionDate = getString("transactionDate"),
+        postedDate = optString("postedDate").takeIf { it.isNotBlank() && it != "null" },
+        merchant = getString("merchant"),
+        category = ExpenseCategory.valueOf(getString("category")),
+        amount = getDouble("amount"),
+        currency = Currency.valueOf(getString("currency")),
+        cardLastFour = optString("cardLastFour"),
+        note = optString("note"),
+    )
+
     private fun PerformanceSummary.toJson(): JSONObject = JSONObject().apply {
         put("realizedProfit", realizedProfit)
         put("unrealizedProfit", unrealizedProfit)
@@ -330,6 +425,7 @@ class LocalPortfolioRepository(
         const val KEY_SERVER_TOKEN = "server_token"
         const val KEY_USD_TO_TWD = "usd_to_twd"
         const val KEY_INSIGHTS = "portfolio_insights"
+        const val KEY_MARKET_SUMMARIES = "market_summaries"
 
         val sampleHoldings = listOf(
             Holding(

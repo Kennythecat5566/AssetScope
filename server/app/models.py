@@ -63,6 +63,32 @@ class Transaction(BaseModel):
     settled_date: str | None = None
 
 
+class ExpenseCategory(StrEnum):
+    DINING = "DINING"
+    TRANSPORT = "TRANSPORT"
+    SHOPPING = "SHOPPING"
+    GROCERIES = "GROCERIES"
+    ENTERTAINMENT = "ENTERTAINMENT"
+    SUBSCRIPTION = "SUBSCRIPTION"
+    TRAVEL = "TRAVEL"
+    HEALTH = "HEALTH"
+    UTILITIES = "UTILITIES"
+    OTHER = "OTHER"
+
+
+class Expense(BaseModel):
+    id: str
+    institution: Institution = Institution.SINOPAC_BANK
+    transaction_date: str
+    posted_date: str | None = None
+    merchant: str
+    category: ExpenseCategory
+    amount: float
+    currency: Currency
+    card_last_four: str = ""
+    note: str = ""
+
+
 class PerformanceSummary(BaseModel):
     realized_profit: float = 0
     unrealized_profit: float = 0
@@ -74,11 +100,12 @@ class PerformanceSummary(BaseModel):
 
 
 class PortfolioResponse(BaseModel):
-    schema_version: int = 2
+    schema_version: int = 3
     generated_at: datetime
     exchange_rates: ExchangeRates
     holdings: list[Holding]
     transactions: list[Transaction] = []
+    expenses: list[Expense] = []
     performance: PerformanceSummary = PerformanceSummary()
     sources: list[str]
 
@@ -97,6 +124,30 @@ class PriceHistoryResponse(BaseModel):
     currency: Currency
     source: str
     candles: list[PriceCandle]
+
+
+class MarketSummaryRequestItem(BaseModel):
+    institution: Institution
+    symbol: str
+
+
+class MarketSummariesRequest(BaseModel):
+    items: list[MarketSummaryRequestItem] = Field(max_length=50)
+
+
+class MarketSummary(BaseModel):
+    institution: Institution
+    symbol: str
+    currency: Currency
+    latest_price: float = Field(gt=0)
+    change: float
+    change_rate: float
+    closes: list[float]
+    source: str
+
+
+class MarketSummariesResponse(BaseModel):
+    summaries: list[MarketSummary]
 
 
 class PortfolioHistoryPoint(BaseModel):

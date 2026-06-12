@@ -31,6 +31,8 @@ def load_csv_folder(import_dir: Path) -> tuple[list[Holding], list[str]]:
     sources: list[str] = []
 
     for path in sorted(import_dir.glob("*.csv")):
+        if path.name.lower().startswith("sinopac-card"):
+            continue
         holdings.extend(load_csv(path))
         sources.append(path.name)
 
@@ -82,4 +84,3 @@ def _to_holding(source: str, row_number: int, row: dict[str, str]) -> Holding:
         average_cost=float(row["average_cost"]),
         market_price=float(row["market_price"]),
     )
-

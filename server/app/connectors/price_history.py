@@ -9,7 +9,14 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from app.config import Settings
-from app.models import Currency, Institution, PriceCandle, PriceHistoryResponse
+from app.models import (
+    Currency,
+    Institution,
+    MarketSummary,
+    MarketSummaryRequestItem,
+    PriceCandle,
+    PriceHistoryResponse,
+)
 
 
 CACHE_TTL = timedelta(minutes=30)
@@ -41,6 +48,43 @@ def load_price_history(
 
     _write_cache(cache_path, response)
     return response
+
+
+def load_market_summaries(
+    settings: Settings,
+    items: list[MarketSummaryRequestItem],
+) -> list[MarketSummary]:
+    summaries: list[MarketSummary] = []
+    seen: set[tuple[Institution, str]] = set()
+    for item in items:
+        symbol = item.symbol.strip().upper()
+        key = (item.institution, symbol)
+        if key in seen:
+            continue
+        seen.add(key)
+        try:
+            history = load_price_history(settings, item.institution, symbol, 30)
+        except (OSError, RuntimeError, ValueError, KeyError):
+            continue
+        closes = [candle.close for candle in history.candles]
+        if len(closes) < 2:
+            continue
+        latest = closes[-1]
+        previous = closes[-2]
+        change = latest - previous
+        summaries.append(
+            MarketSummary(
+                institution=item.institution,
+                symbol=symbol,
+                currency=history.currency,
+                latest_price=latest,
+                change=change,
+                change_rate=change / previous if previous else 0,
+                closes=closes,
+                source=history.source,
+            )
+        )
+    return summaries
 
 
 def _load_shioaji_history(

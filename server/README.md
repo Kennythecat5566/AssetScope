@@ -40,6 +40,54 @@ file on each request, so replacing a file does not require a restart.
 Do not use duplicate account/symbol rows across files. A sample format is in
 `..\samples\holdings-template.csv`.
 
+## SinoPac Credit Card Expenses
+
+AssetScope can analyze an official SinoPac credit-card CSV without storing
+your online-banking password. Save the exported file under `data/imports` with
+a name beginning with `sinopac-card`, for example:
+
+```text
+data/imports/sinopac-card-2026-06.csv
+```
+
+The supported template is `..\samples\sinopac-card-template.csv`. Required
+columns are transaction date, merchant, and amount. The importer accepts the
+English template headers and common Chinese headers such as `消費日`,
+`消費明細`, and `新台幣金額`. ROC dates such as `115/06/09` are supported.
+
+Categories can be supplied in the CSV or inferred from merchant keywords.
+Supported categories include dining, transport, shopping, groceries,
+entertainment, subscriptions, travel, health, utilities, and other. Negative
+amounts are treated as refunds.
+
+After replacing the CSV, tap `連接並同步` or `立即同步` in the Android app.
+The `消費` page shows the latest month's total, category chart, and itemized
+card activity.
+
+### Browser-assisted SinoPac export
+
+To try a browser-assisted download, run:
+
+```powershell
+D:\AppDev\server\capture-sinopac-card.cmd
+```
+
+The tool opens the official SinoPac MMA site in a dedicated Microsoft Edge
+profile. Enter the username, password, captcha, and MFA only in the official
+browser window. AssetScope does not read or store them. After login, it makes
+a best-effort attempt to open the read-only `信用卡` and `近期帳單` sections,
+then waits for a CSV download. If the site layout has changed, navigate to the
+bill page and click its CSV/export control yourself.
+
+Only downloads from an official `sinopac.com` or `sinopac.com.tw` page are
+accepted. The automation does not click payment, transfer, cash advance, or
+trading controls and does not bypass captcha, MFA, or device verification.
+The accepted CSV is copied to `data/imports` automatically.
+
+SinoPac does not guarantee that every personal credit-card page offers CSV.
+If a page provides only PDF, use the official CSV option on another statement
+or continue with the manual template until PDF parsing is added.
+
 ## Browser-Assisted Firstrade Export
 
 Firstrade may reject an automated browser as a new or suspicious device. If
@@ -208,6 +256,18 @@ The authenticated history endpoint provides daily OHLCV candles for charting:
 ```text
 GET /api/v1/history/{institution}/{symbol}?days=90
 ```
+
+The Android holdings list also requests compact 30-session market summaries
+in one authenticated call:
+
+```text
+POST /api/v1/market/summaries
+```
+
+Each successful item includes the latest close, previous-session change,
+change rate, and closing prices used by the mini trend chart. A failed symbol
+is omitted without preventing the other holdings from loading. Cash and
+deposit holdings are not requested.
 
 The portfolio endpoint records one net-worth snapshot per day. The app reads
 the accumulated timeline from:
