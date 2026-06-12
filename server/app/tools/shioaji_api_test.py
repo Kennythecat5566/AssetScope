@@ -8,7 +8,6 @@ from app.config import Settings
 
 
 TEST_SYMBOL = "2890"
-TEST_PRICE = 28
 
 
 def main() -> int:
@@ -37,10 +36,17 @@ def main() -> int:
         contract = api.Contracts.Stocks.TSE.TSE2890
         if contract is None or contract.code != TEST_SYMBOL:
             raise RuntimeError("The official stock test contract could not be loaded")
+        test_price = float(contract.reference)
+        if not float(contract.limit_down) <= test_price <= float(contract.limit_up):
+            raise RuntimeError("The current test price is outside the daily price limits")
+        print(
+            f"Simulation test price: {test_price:g} "
+            f"(limits {float(contract.limit_down):g}-{float(contract.limit_up):g})"
+        )
 
         order = sj.StockOrder(
             action=sj.Action.Buy,
-            price=TEST_PRICE,
+            price=test_price,
             quantity=1,
             price_type=sj.StockPriceType.LMT,
             order_type=sj.OrderType.ROD,
@@ -73,6 +79,12 @@ def main() -> int:
             print(
                 "Enable the Trading permission for this API Key in SinoPac "
                 "API Key management, then run this test again."
+            )
+        if "Please sign" in message:
+            print(
+                "The stock account has not completed SinoPac's stock API "
+                "agreement. Complete the securities API agreement in the "
+                "Sign Center before running this test again."
             )
         return 1
     finally:

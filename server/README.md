@@ -134,8 +134,9 @@ On a business day during SinoPac's test service hours, run:
 
 The script is hard-coded to `simulation=True` and follows SinoPac's official
 stock test example. It submits one simulated limit order for the test symbol
-2890; it cannot place a production order. Wait at least five minutes after a
-successful result before checking the production account's `signed` status.
+2890 using that day's reference price; it cannot place a production order.
+Wait at least five minutes after a successful result before checking the
+production account's `signed` status.
 The API Key must have the `Trading` permission enabled for SinoPac to accept
 and record the simulated order test.
 
