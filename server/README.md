@@ -151,15 +151,19 @@ Run this once to start the API at Windows sign-in:
 The `.cmd` launchers use `ExecutionPolicy Bypass` for their own process only.
 They do not change the machine-wide PowerShell policy.
 
-If the phone cannot connect, change the active Wi-Fi network profile to
-`Private`, then run:
+The phone and PC must be connected to the same home router. A phone using 5G
+or another hotspot cannot reach a PC address such as `192.168.0.102`.
+
+If the phone cannot connect, run:
 
 ```powershell
 .\allow-firewall.cmd
 ```
 
-Accept the Windows administrator prompt. This bypasses the PowerShell script
-policy for this process only and does not change the machine-wide policy.
+Accept the Windows administrator prompt. On an active network with a private
+gateway, the script changes the Windows network category to `Private` and
+allows TCP 8787 from `LocalSubnet` only. It does not expose the server to the
+public Internet.
 
 Alternatively, from Administrator PowerShell:
 
