@@ -6,6 +6,14 @@ import org.junit.Test
 
 class PortfolioApiClientTest {
     @Test
+    fun `accepts Tailscale CGNAT addresses as private`() {
+        assertEquals(
+            true,
+            PortfolioApiClient.isPrivateAddress(byteArrayOf(100, 100, 10, 20)),
+        )
+    }
+
+    @Test
     fun `handles plain text internal server error`() {
         assertEquals(
             "伺服器內部錯誤（HTTP 500），請檢查電腦伺服器",

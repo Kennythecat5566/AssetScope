@@ -172,3 +172,21 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\allow-firewall.ps1
 ```
 
 The firewall rule only permits TCP 8787 from the local subnet.
+
+## Access Away From Home
+
+Use Tailscale instead of router port forwarding. It creates a private encrypted
+network between the PC and Android phone without exposing port 8787 publicly.
+
+On the PC, run:
+
+```powershell
+.\setup-tailscale.cmd
+```
+
+Accept the administrator prompt and sign in to Tailscale. Install the official
+Tailscale Android app and sign in with the same account. Enter the URL printed
+by the setup script, for example `http://100.x.y.z:8787`, in AssetScope.
+
+The separate Windows Firewall rule allows TCP 8787 only from Tailscale's
+`100.64.0.0/10` address range. Do not configure router port forwarding.

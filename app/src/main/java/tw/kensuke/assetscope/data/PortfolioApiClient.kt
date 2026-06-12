@@ -155,17 +155,22 @@ class PortfolioApiClient {
             }
             return normalized
         }
+
+        internal fun isPrivateAddress(address: ByteArray?, host: String = ""): Boolean {
+            if (host == "localhost") return true
+            if (address == null || address.size != 4) return false
+            val first = address[0].toInt() and 0xff
+            val second = address[1].toInt() and 0xff
+            return first == 10 ||
+                first == 127 ||
+                (first == 100 && second in 64..127) ||
+                (first == 172 && second in 16..31) ||
+                (first == 192 && second == 168)
+        }
     }
 
-    private fun isPrivateHost(host: String): Boolean {
-        if (host == "localhost") return true
-        val address = runCatching { InetAddress.getByName(host).address }.getOrNull() ?: return false
-        if (address.size != 4) return false
-        val first = address[0].toInt() and 0xff
-        val second = address[1].toInt() and 0xff
-        return first == 10 ||
-            first == 127 ||
-            (first == 172 && second in 16..31) ||
-            (first == 192 && second == 168)
-    }
+    private fun isPrivateHost(host: String): Boolean = isPrivateAddress(
+        runCatching { InetAddress.getByName(host).address }.getOrNull(),
+        host,
+    )
 }
