@@ -126,6 +126,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     val displayCurrency = state.appSettings.displayCurrency
     var showSettings by remember { mutableStateOf(false) }
     var checkingUpdate by remember { mutableStateOf(false) }
+    var transactionFilter by rememberSaveable { mutableStateOf(TransactionFilter.ALL) }
     val pagerState = rememberPagerState(pageCount = { AppPage.entries.size })
     val snackbarHostState = remember { SnackbarHostState() }
     val csvLauncher = rememberLauncherForActivityResult(
@@ -292,7 +293,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                     ) {
                     when (pageType) {
                         AppPage.OVERVIEW -> {
-                            item {
+                            item(key = "overview-total") {
                                 TotalAssetOverviewCard(
                                     summary = state.summary,
                                     usdToTwd = state.rates.usdToTwd,
@@ -317,7 +318,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                 )
                             }
                             availableUpdate?.let { update ->
-                                item {
+                                item(key = "overview-update") {
                                     AppUpdateCard(
                                         update = update,
                                         currentVersion = BuildConfig.VERSION_NAME,
@@ -340,7 +341,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                 }
                             }
                             if (state.transactions.isNotEmpty()) {
-                                item {
+                                item(key = "overview-performance") {
                                     PerformanceCard(
                                         performance = state.performance,
                                         displayCurrency = displayCurrency,
@@ -348,7 +349,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                     )
                                 }
                             }
-                            item {
+                            item(key = "overview-allocation") {
                                 DistributionCard(
                                     assetAllocations = state.summary.assetAllocations,
                                     institutionAllocations =
@@ -359,7 +360,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                             }
                         }
                         AppPage.HOLDINGS -> {
-                            item {
+                            item(key = "holdings-header") {
                                 SectionHeader(
                                     title = uiText("持倉明細", "Holdings"),
                                     trailing = uiText(
@@ -418,25 +419,68 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                             }
                         }
                         AppPage.TRANSACTIONS -> {
-                            item {
-                                TransactionPage(
-                                    transactions = state.transactions,
+                            val filteredTransactions = when (transactionFilter) {
+                                TransactionFilter.ALL -> state.transactions
+                                TransactionFilter.FIRSTRADE -> state.transactions.filter {
+                                    it.institution == Institution.FIRSTRade
+                                }
+                                TransactionFilter.SINOPAC -> state.transactions.filter {
+                                    it.institution == Institution.SINOPAC_SECURITIES
+                                }
+                            }
+                            item(key = "transactions-header") {
+                                TransactionHeader(
+                                    totalCount = state.transactions.size,
+                                    filter = transactionFilter,
+                                    onFilterChange = { transactionFilter = it },
+                                )
+                            }
+                            item(key = "transactions-timeline") {
+                                TransactionContent(
+                                    transactions = filteredTransactions,
+                                    filter = transactionFilter,
                                     displayCurrency = displayCurrency,
                                     usdToTwd = state.rates.usdToTwd,
                                 )
                             }
                         }
                         AppPage.EXPENSES -> {
-                            item {
-                                ExpensePage(
-                                    expenses = state.expenses,
+                            val expenseData = buildExpensePageData(
+                                expenses = state.expenses,
+                                usdToTwd = state.rates.usdToTwd,
+                            )
+                            item(key = "expenses-summary") {
+                                ExpenseSummarySection(
+                                    data = expenseData,
                                     displayCurrency = displayCurrency,
                                     usdToTwd = state.rates.usdToTwd,
                                 )
                             }
+                            if (expenseData.monthlyExpenses.isEmpty()) {
+                                item(key = "expenses-empty") {
+                                    ExpenseEmptySection()
+                                }
+                            } else {
+                                if (expenseData.allocations.isNotEmpty()) {
+                                    item(key = "expenses-categories") {
+                                        ExpenseCategoriesSection(
+                                            allocations = expenseData.allocations,
+                                            displayCurrency = displayCurrency,
+                                            usdToTwd = state.rates.usdToTwd,
+                                        )
+                                    }
+                                }
+                                item(key = "expenses-activity") {
+                                    ExpenseActivitySection(
+                                        expenses = expenseData.monthlyExpenses,
+                                        displayCurrency = displayCurrency,
+                                        usdToTwd = state.rates.usdToTwd,
+                                    )
+                                }
+                            }
                         }
                         AppPage.SYNC -> {
-                            item {
+                            item(key = "sync-server") {
                                 ServerSyncCard(
                                     configuredUrl = state.serverUrl,
                                     defaultUrl = "http://192.168.0.102:8787",
@@ -445,7 +489,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                     onDisable = viewModel::disableServerSync,
                                 )
                             }
-                            item {
+                            item(key = "sync-folder") {
                                 AutoSyncCard(
                                     enabled = state.autoSyncFolder != null,
                                     onChooseFolder = { folderLauncher.launch(null) },
@@ -453,7 +497,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                     onDisable = viewModel::disableAutoSync,
                                 )
                             }
-                            item {
+                            item(key = "sync-import") {
                                 ImportCard(
                                     onImport = {
                                         csvLauncher.launch(arrayOf("text/*", "text/csv"))
@@ -474,7 +518,9 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                             Text(
                                 text = scrollHint(
                                     page = pageType,
-                                    firstVisibleIndex = listState.firstVisibleItemIndex,
+                                    visibleKey = listState.layoutInfo.visibleItemsInfo
+                                        .firstOrNull { it.offset + it.size > 0 }
+                                        ?.key,
                                     regularHoldings = regularHoldings,
                                     currencyHoldings = currencyHoldings,
                                 ),
@@ -662,12 +708,17 @@ private fun PageNavigation(
     }
 }
 
-@Composable
-private fun ExpensePage(
+private data class ExpensePageData(
+    val latestMonth: String?,
+    val monthlyExpenses: List<Expense>,
+    val totalTwd: Double,
+    val allocations: List<Allocation>,
+)
+
+private fun buildExpensePageData(
     expenses: List<Expense>,
-    displayCurrency: Currency,
     usdToTwd: Double,
-) {
+): ExpensePageData {
     val latestMonth = expenses.maxOfOrNull { it.transactionDate.take(7) }
     val monthlyExpenses = expenses.filter { it.transactionDate.startsWith(latestMonth.orEmpty()) }
     val totalTwd = monthlyExpenses.sumOf { expense ->
@@ -691,11 +742,20 @@ private fun ExpensePage(
             ratio = if (positiveTotal == 0.0) 0.0 else value / positiveTotal,
         )
     }
+    return ExpensePageData(latestMonth, monthlyExpenses, totalTwd, allocations)
+}
 
+@Composable
+private fun ExpenseSummarySection(
+    data: ExpensePageData,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         SectionHeader(
             title = uiText("日常花費", "Expenses"),
-            trailing = latestMonth?.replace("-", " / ") ?: uiText("尚無資料", "No data"),
+            trailing = data.latestMonth?.replace("-", " / ")
+                ?: uiText("尚無資料", "No data"),
         )
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -710,143 +770,95 @@ private fun ExpensePage(
                 )
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    totalTwd
+                    data.totalTwd
                         .toDisplayCurrency(displayCurrency, usdToTwd)
                         .asMoney(displayCurrency),
                     style = MaterialTheme.typography.headlineMedium,
                 )
                 Text(
                     uiText(
-                        "${monthlyExpenses.size} 筆永豐信用卡交易",
-                        "${monthlyExpenses.size} SinoPac card transactions",
+                        "${data.monthlyExpenses.size} 筆永豐信用卡交易",
+                        "${data.monthlyExpenses.size} SinoPac card transactions",
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
-        if (monthlyExpenses.isEmpty()) {
-            Card(
+    }
+}
+
+@Composable
+private fun ExpenseEmptySection() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Text(
+            uiText(
+                "尚無刷卡紀錄。將永豐官方匯出的 CSV 放入電腦伺服器的 data/imports 後同步。",
+                "No card activity yet. Export the official SinoPac CSV, place it in the server data/imports folder, then sync.",
+            ),
+            modifier = Modifier.padding(20.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ExpenseCategoriesSection(
+    allocations: List<Allocation>,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            SectionHeader(
+                uiText("支出分類", "Spending categories"),
+                uiText("${allocations.size} 類", "${allocations.size} categories"),
+            )
+            Spacer(Modifier.height(16.dp))
+            Box(
                 modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    uiText(
-                        "尚無刷卡紀錄。將永豐官方匯出的 CSV 放入電腦伺服器的 data/imports 後同步。",
-                        "No card activity yet. Export the official SinoPac CSV, place it in the server data/imports folder, then sync.",
-                    ),
-                    modifier = Modifier.padding(20.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                AllocationPie(
+                    allocations = allocations,
+                    colors = allocationColors,
+                    modifier = Modifier.size(190.dp),
                 )
             }
-            return
-        }
-        if (allocations.isNotEmpty()) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    SectionHeader(
-                        uiText("支出分類", "Spending categories"),
-                        uiText("${allocations.size} 類", "${allocations.size} categories"),
-                    )
-                    Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(16.dp))
+            allocations.forEachIndexed { index, allocation ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
                     Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        AllocationPie(
-                            allocations = allocations,
-                            colors = allocationColors,
-                            modifier = Modifier.size(190.dp),
-                        )
-                    }
-                    Spacer(Modifier.height(16.dp))
-                    allocations.forEachIndexed { index, allocation ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                Modifier
-                                    .size(10.dp)
-                                    .background(
-                                        allocationColors[index % allocationColors.size],
-                                        CircleShape,
-                                    ),
-                            )
-                            Spacer(Modifier.width(8.dp))
-                            Text(
-                                expenseCategoryLabel(allocation.label),
-                                modifier = Modifier.weight(1f),
-                            )
-                            Text(
-                                allocation.valueTwd
-                                    .toDisplayCurrency(displayCurrency, usdToTwd)
-                                    .asMoney(displayCurrency),
-                            )
-                        }
-                    }
-                }
-            }
-        }
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                SectionHeader(
-                    uiText("刷卡明細", "Card activity"),
-                    uiText("最近 ${monthlyExpenses.size} 筆", "${monthlyExpenses.size} recent"),
-                )
-                Spacer(Modifier.height(8.dp))
-                monthlyExpenses.forEachIndexed { index, expense ->
-                    val multiplier = currencyMultiplier(
-                        expense.currency,
-                        displayCurrency,
-                        usdToTwd,
+                        Modifier
+                            .size(10.dp)
+                            .background(
+                                allocationColors[index % allocationColors.size],
+                                CircleShape,
+                            ),
                     )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                expense.merchant,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                buildString {
-                                    append(expense.transactionDate)
-                                    append(" · ")
-                                    append(expense.category.localizedName())
-                                    if (expense.cardLastFour.isNotBlank()) {
-                                        append(" · •")
-                                        append(expense.cardLastFour)
-                                    }
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        Text(
-                            (expense.amount * multiplier).asSignedMoney(displayCurrency),
-                            color = if (expense.amount < 0) lossColor else Color.Unspecified,
-                        )
-                    }
-                    if (index != monthlyExpenses.lastIndex) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        expenseCategoryLabel(allocation.label),
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        allocation.valueTwd
+                            .toDisplayCurrency(displayCurrency, usdToTwd)
+                            .asMoney(displayCurrency),
+                    )
                 }
             }
         }
@@ -854,32 +866,83 @@ private fun ExpensePage(
 }
 
 @Composable
-private fun TransactionPage(
-    transactions: List<Transaction>,
+private fun ExpenseActivitySection(
+    expenses: List<Expense>,
     displayCurrency: Currency,
     usdToTwd: Double,
 ) {
-    var filter by rememberSaveable { mutableStateOf(TransactionFilter.ALL) }
-    val filtered = remember(transactions, filter) {
-        when (filter) {
-            TransactionFilter.ALL -> transactions
-            TransactionFilter.FIRSTRADE -> transactions.filter {
-                it.institution == Institution.FIRSTRade
-            }
-            TransactionFilter.SINOPAC -> transactions.filter {
-                it.institution == Institution.SINOPAC_SECURITIES
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            SectionHeader(
+                uiText("刷卡明細", "Card activity"),
+                uiText("最近 ${expenses.size} 筆", "${expenses.size} recent"),
+            )
+            Spacer(Modifier.height(8.dp))
+            expenses.forEachIndexed { index, expense ->
+                val multiplier = currencyMultiplier(
+                    expense.currency,
+                    displayCurrency,
+                    usdToTwd,
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            expense.merchant,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            buildString {
+                                append(expense.transactionDate)
+                                append(" · ")
+                                append(expense.category.localizedName())
+                                if (expense.cardLastFour.isNotBlank()) {
+                                    append(" · •")
+                                    append(expense.cardLastFour)
+                                }
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Text(
+                        (expense.amount * multiplier).asSignedMoney(displayCurrency),
+                        color = if (expense.amount < 0) lossColor else Color.Unspecified,
+                    )
+                }
+                if (index != expenses.lastIndex) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
             }
         }
     }
+}
+
+@Composable
+private fun TransactionHeader(
+    totalCount: Int,
+    filter: TransactionFilter,
+    onFilterChange: (TransactionFilter) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         SectionHeader(
             uiText("交易明細", "Transactions"),
-            uiText("${transactions.size} 筆", "${transactions.size} items"),
+            uiText("$totalCount 筆", "$totalCount items"),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             TransactionFilter.entries.forEach { item ->
                 Button(
-                    onClick = { filter = item },
+                    onClick = { onFilterChange(item) },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (filter == item) {
                             MaterialTheme.colorScheme.secondary
@@ -897,44 +960,53 @@ private fun TransactionPage(
                 }
             }
         }
-        if (filtered.isEmpty()) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                ),
-            ) {
-                Text(
-                    text = when (filter) {
-                        TransactionFilter.ALL ->
-                            uiText(
-                                "尚無交易資料。請到「同步」頁按立即同步。",
-                                "No transactions yet. Open Sync and tap Sync now.",
-                            )
-                        TransactionFilter.FIRSTRADE ->
-                            uiText(
-                                "尚無 Firstrade 交易資料，請重新匯出交易 CSV。",
-                                "No Firstrade transactions. Export the transaction CSV again.",
-                            )
-                        TransactionFilter.SINOPAC ->
-                            uiText(
-                                "目前沒有 Shioaji 可查的永豐持倉批次或已實現賣出。",
-                                "No SinoPac position lots or realized sales are currently available from Shioaji.",
-                            )
-                    },
-                    modifier = Modifier.padding(20.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        } else {
-            TransactionHistoryCard(
-                transactions = filtered,
-                totalCount = filtered.size,
-                displayCurrency = displayCurrency,
-                usdToTwd = usdToTwd,
+    }
+}
+
+@Composable
+private fun TransactionContent(
+    transactions: List<Transaction>,
+    filter: TransactionFilter,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+) {
+    if (transactions.isEmpty()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface,
+            ),
+        ) {
+            Text(
+                text = when (filter) {
+                    TransactionFilter.ALL ->
+                        uiText(
+                            "尚無交易資料。請到「同步」頁按立即同步。",
+                            "No transactions yet. Open Sync and tap Sync now.",
+                        )
+                    TransactionFilter.FIRSTRADE ->
+                        uiText(
+                            "尚無 Firstrade 交易資料，請重新匯出交易 CSV。",
+                            "No Firstrade transactions. Export the transaction CSV again.",
+                        )
+                    TransactionFilter.SINOPAC ->
+                        uiText(
+                            "目前沒有 Shioaji 可查的永豐持倉批次或已實現賣出。",
+                            "No SinoPac position lots or realized sales are currently available from Shioaji.",
+                        )
+                },
+                modifier = Modifier.padding(20.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    } else {
+        TransactionHistoryCard(
+            transactions = transactions,
+            totalCount = transactions.size,
+            displayCurrency = displayCurrency,
+            usdToTwd = usdToTwd,
+        )
     }
 }
 
@@ -1120,12 +1192,6 @@ private fun TransactionHistoryCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                "ACTIVITY",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
-            Spacer(Modifier.height(4.dp))
             SectionHeader(
                 uiText("交易時間軸", "Timeline"),
                 uiText(
@@ -1939,20 +2005,35 @@ private fun Holding.isCurrencyHolding(): Boolean = symbol == "USD" || symbol == 
 @Composable
 private fun scrollHint(
     page: AppPage,
-    firstVisibleIndex: Int,
+    visibleKey: Any?,
     regularHoldings: List<Holding>,
     currencyHoldings: List<Holding>,
 ): String {
-    if (page != AppPage.HOLDINGS || firstVisibleIndex == 0) {
-        return page.label(LocalUiLanguage.current)
+    val language = LocalUiLanguage.current
+    val key = visibleKey?.toString()
+    if (page == AppPage.HOLDINGS) {
+        val holding = (regularHoldings + currencyHoldings).firstOrNull { it.id == key }
+        if (holding != null) return holding.symbol
     }
-    val holdingIndex = firstVisibleIndex - 1
-    if (holdingIndex in regularHoldings.indices) {
-        return regularHoldings[holdingIndex].symbol
+    return when (key) {
+        "overview-total" -> if (language == UiLanguage.EN) "Net worth" else "總資產淨值"
+        "overview-update" -> if (language == UiLanguage.EN) "App update" else "版本更新"
+        "overview-performance" -> if (language == UiLanguage.EN) "Performance" else "投資績效"
+        "overview-allocation" -> if (language == UiLanguage.EN) "Allocation" else "資產分布"
+        "holdings-header" -> page.label(language)
+        "currency-divider" -> if (language == UiLanguage.EN) "Cash" else "現金"
+        "transactions-header" -> if (language == UiLanguage.EN) "Transactions" else "交易明細"
+        "transactions-timeline" -> if (language == UiLanguage.EN) "Timeline" else "交易時間軸"
+        "expenses-summary" -> if (language == UiLanguage.EN) "Expenses" else "日常花費"
+        "expenses-empty" -> if (language == UiLanguage.EN) "No activity" else "尚無紀錄"
+        "expenses-categories" ->
+            if (language == UiLanguage.EN) "Spending categories" else "支出分類"
+        "expenses-activity" -> if (language == UiLanguage.EN) "Card activity" else "刷卡明細"
+        "sync-server" -> if (language == UiLanguage.EN) "PC server" else "電腦資產伺服器"
+        "sync-folder" -> if (language == UiLanguage.EN) "Folder sync" else "資料夾自動同步"
+        "sync-import" -> if (language == UiLanguage.EN) "CSV import" else "匯入資產 CSV"
+        else -> page.label(language)
     }
-    val currencyIndex = firstVisibleIndex - regularHoldings.size - 2
-    return currencyHoldings.getOrNull(currencyIndex)?.symbol
-        ?: page.label(LocalUiLanguage.current)
 }
 
 private val Holding.returnRate: Double
