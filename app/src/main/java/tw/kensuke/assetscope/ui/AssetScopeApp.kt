@@ -507,7 +507,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                         }
                     }
                 }
-                    if (listState.isScrollInProgress) {
+                    if (pageType == AppPage.OVERVIEW && listState.isScrollInProgress) {
                         Surface(
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
