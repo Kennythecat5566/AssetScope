@@ -126,6 +126,19 @@ official SinoPac API agreement and stock API test. A successful API Key login
 alone is not sufficient; `api.list_accounts()` must report `signed=True` for
 the stock account before position and balance queries are accepted.
 
+On a business day during SinoPac's test service hours, run:
+
+```powershell
+.\test-shioaji-api.cmd
+```
+
+The script is hard-coded to `simulation=True` and follows SinoPac's official
+stock test example. It submits one simulated limit order for the test symbol
+2890; it cannot place a production order. Wait at least five minutes after a
+successful result before checking the production account's `signed` status.
+The API Key must have the `Trading` permission enabled for SinoPac to accept
+and record the simulated order test.
+
 ## Windows Automation
 
 Run this once to start the API at Windows sign-in:
