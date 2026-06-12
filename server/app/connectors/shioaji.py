@@ -1,16 +1,39 @@
 from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import date, timedelta
+import hashlib
 from typing import Any
 
 from app.config import Settings
-from app.models import AssetType, Currency, Holding, Institution
+from app.models import (
+    AssetType,
+    Currency,
+    Holding,
+    Institution,
+    Transaction,
+    TransactionType,
+)
+
+
+@dataclass
+class ShioajiData:
+    holdings: list[Holding]
+    transactions: list[Transaction]
 
 
 def load_shioaji_assets(
     settings: Settings,
     api_factory: Callable[[], Any] | None = None,
 ) -> list[Holding]:
+    return load_shioaji_data(settings, api_factory).holdings
+
+
+def load_shioaji_data(
+    settings: Settings,
+    api_factory: Callable[[], Any] | None = None,
+) -> ShioajiData:
     if not settings.shioaji_enabled:
-        return []
+        return ShioajiData([], [])
     if not settings.shioaji_api_key or not settings.shioaji_secret_key:
         raise ValueError("Shioaji is enabled but API credentials are missing")
 
@@ -47,6 +70,23 @@ def load_shioaji_assets(
                 unit=sj.Unit.Share,
             )
             holdings = [_position_to_holding(position) for position in positions]
+            position_details = (
+                api.list_position_detail(account=stock_account)
+                if positions
+                else []
+            )
+            transactions = _position_details_to_transactions(
+                positions,
+                position_details,
+            )
+            begin_date = date.today() - timedelta(days=settings.shioaji_history_days)
+            profit_losses = api.list_profit_loss(
+                account=stock_account,
+                begin_date=begin_date.isoformat(),
+                end_date=date.today().isoformat(),
+                unit=sj.Unit.Share,
+            )
+            transactions.extend(_profit_losses_to_transactions(profit_losses))
 
             account_balance = api.account_balance(account=stock_account)
             if account_balance.errmsg:
@@ -54,7 +94,14 @@ def load_shioaji_assets(
                     f"Shioaji account balance failed: {account_balance.errmsg}"
                 )
             holdings.append(_balance_to_holding(account_balance.acc_balance))
-            return holdings
+            return ShioajiData(
+                holdings=holdings,
+                transactions=sorted(
+                    transactions,
+                    key=lambda item: item.trade_date,
+                    reverse=True,
+                ),
+            )
         except RuntimeError:
             raise
         except Exception as error:
@@ -92,3 +139,85 @@ def _balance_to_holding(balance: float) -> Holding:
         average_cost=float(balance),
         market_price=float(balance),
     )
+
+
+def _position_details_to_transactions(
+    positions: list[Any],
+    details: list[Any],
+) -> list[Transaction]:
+    shares_by_code = {
+        str(position.code): float(position.quantity)
+        for position in positions
+    }
+    detail_quantity_by_code: dict[str, float] = {}
+    for detail in details:
+        code = str(detail.code)
+        detail_quantity_by_code[code] = (
+            detail_quantity_by_code.get(code, 0.0) + float(detail.quantity)
+        )
+
+    transactions: list[Transaction] = []
+    for detail in details:
+        code = str(detail.code)
+        raw_quantity = float(detail.quantity)
+        total_raw = detail_quantity_by_code.get(code, raw_quantity)
+        share_ratio = shares_by_code.get(code, raw_quantity) / total_raw
+        quantity = raw_quantity * share_ratio
+        total_cost = float(detail.price)
+        unit_price = total_cost / quantity if quantity else 0.0
+        transactions.append(
+            Transaction(
+                id=_stable_id("position", code, detail.date, detail.dseq),
+                institution=Institution.SINOPAC_SECURITIES,
+                account_name="SinoPac Securities",
+                symbol=code,
+                name=code,
+                transaction_type=TransactionType.BUY,
+                currency=Currency.TWD,
+                quantity=quantity,
+                price=unit_price,
+                amount=-total_cost,
+                realized_profit=0,
+                trade_date=str(detail.date),
+                settled_date=None,
+            )
+        )
+    return transactions
+
+
+def _profit_losses_to_transactions(items: list[Any]) -> list[Transaction]:
+    transactions: list[Transaction] = []
+    for item in items:
+        quantity = float(getattr(item, "quantity", 0))
+        price = float(getattr(item, "price", 0))
+        cost = float(getattr(item, "cost", 0))
+        pnl = float(getattr(item, "pnl", 0))
+        trade_date = str(getattr(item, "date", ""))
+        code = str(getattr(item, "code", ""))
+        transactions.append(
+            Transaction(
+                id=_stable_id(
+                    "profit-loss",
+                    code,
+                    trade_date,
+                    getattr(item, "dseq", ""),
+                ),
+                institution=Institution.SINOPAC_SECURITIES,
+                account_name="SinoPac Securities",
+                symbol=code,
+                name=code,
+                transaction_type=TransactionType.SELL,
+                currency=Currency.TWD,
+                quantity=quantity,
+                price=price,
+                amount=cost + pnl,
+                realized_profit=pnl,
+                trade_date=trade_date,
+                settled_date=None,
+            )
+        )
+    return transactions
+
+
+def _stable_id(*parts: object) -> str:
+    return hashlib.sha256("|".join(map(str, parts)).encode()).hexdigest()[:24]

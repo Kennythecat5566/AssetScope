@@ -52,6 +52,13 @@ private enum class ChartMode {
     TREND,
 }
 
+private enum class ChartPeriod(val label: String, val days: Int) {
+    DAILY("日線", 30),
+    MONTHLY("月線", 90),
+    QUARTERLY("季線", 180),
+    YEARLY("年線", 250),
+}
+
 @Composable
 fun StockChartDialog(
     holding: Holding,
@@ -60,6 +67,8 @@ fun StockChartDialog(
     error: String?,
     displayCurrency: Currency,
     usdToTwd: Double,
+    selectedDays: Int,
+    onPeriodChange: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var mode by remember { mutableStateOf(ChartMode.CANDLE) }
@@ -135,6 +144,16 @@ fun StockChartDialog(
                                 onClick = { mode = ChartMode.TREND },
                             )
                         }
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            ChartPeriod.entries.forEach { period ->
+                                ChartPeriodButton(
+                                    period = period,
+                                    selected = selectedDays == period.days,
+                                    onClick = { onPeriodChange(period.days) },
+                                )
+                            }
+                        }
                         Spacer(Modifier.height(14.dp))
                         PriceChart(
                             candles = history.candles,
@@ -157,6 +176,35 @@ fun StockChartDialog(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ChartPeriodButton(
+    period: ChartPeriod,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Button(
+        onClick = onClick,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            horizontal = 10.dp,
+            vertical = 4.dp,
+        ),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.secondary
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+            contentColor = if (selected) {
+                MaterialTheme.colorScheme.onSecondary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        ),
+    ) {
+        Text(period.label, style = MaterialTheme.typography.labelSmall)
     }
 }
 

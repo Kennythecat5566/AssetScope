@@ -14,9 +14,12 @@ import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.ExchangeRates
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.Institution
+import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PriceHistory
+import tw.kensuke.assetscope.domain.model.Transaction
+import tw.kensuke.assetscope.domain.model.TransactionType
 
 class LocalPortfolioRepository(
     context: Context,
@@ -31,7 +34,7 @@ class LocalPortfolioRepository(
     )
     private val mutableAutoSyncFolder = MutableStateFlow(preferences.getString(KEY_SYNC_FOLDER, null))
     private val mutableServerUrl = MutableStateFlow(preferences.getString(KEY_SERVER_URL, null))
-    private val mutableInsights = MutableStateFlow(PortfolioInsights())
+    private val mutableInsights = MutableStateFlow(loadInsights())
     private val preferenceListener =
         android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
@@ -40,6 +43,15 @@ class LocalPortfolioRepository(
                     mutableAutoSyncFolder.value = preferences.getString(KEY_SYNC_FOLDER, null)
                 }
                 KEY_SERVER_URL -> mutableServerUrl.value = preferences.getString(KEY_SERVER_URL, null)
+                KEY_INSIGHTS -> mutableInsights.value = loadInsights()
+                KEY_USD_TO_TWD -> {
+                    mutableExchangeRates.value = mutableExchangeRates.value.copy(
+                        usdToTwd = preferences.getFloat(
+                            KEY_USD_TO_TWD,
+                            32.4f,
+                        ).toDouble(),
+                    )
+                }
             }
         }
 
@@ -172,6 +184,7 @@ class LocalPortfolioRepository(
         mutableExchangeRates.value = remote.rates
         mutableInsights.value = remote.insights
         saveHoldings(remote.holdings)
+        saveInsights(remote.insights)
         preferences.edit()
             .putFloat(KEY_USD_TO_TWD, remote.rates.usdToTwd.toFloat())
             .apply()
@@ -207,6 +220,29 @@ class LocalPortfolioRepository(
         preferences.edit().putString(KEY_HOLDINGS, array.toString()).apply()
     }
 
+    private fun loadInsights(): PortfolioInsights {
+        val stored = preferences.getString(KEY_INSIGHTS, null) ?: return PortfolioInsights()
+        return runCatching {
+            val root = JSONObject(stored)
+            val transactions = root.getJSONArray("transactions")
+            PortfolioInsights(
+                transactions = List(transactions.length()) { index ->
+                    transactions.getJSONObject(index).toTransaction()
+                },
+                performance = root.getJSONObject("performance").toPerformance(),
+            )
+        }.getOrDefault(PortfolioInsights())
+    }
+
+    private fun saveInsights(insights: PortfolioInsights) {
+        val transactions = JSONArray()
+        insights.transactions.forEach { transactions.put(it.toJson()) }
+        val root = JSONObject()
+            .put("transactions", transactions)
+            .put("performance", insights.performance.toJson())
+        preferences.edit().putString(KEY_INSIGHTS, root.toString()).apply()
+    }
+
     private fun Holding.toJson(): JSONObject = JSONObject().apply {
         put("id", id)
         put("institution", institution.name)
@@ -233,6 +269,59 @@ class LocalPortfolioRepository(
         marketPrice = getDouble("marketPrice"),
     )
 
+    private fun Transaction.toJson(): JSONObject = JSONObject().apply {
+        put("id", id)
+        put("institution", institution.name)
+        put("accountName", accountName)
+        put("symbol", symbol)
+        put("name", name)
+        put("transactionType", transactionType.name)
+        put("currency", currency.name)
+        put("quantity", quantity)
+        put("price", price)
+        put("amount", amount)
+        put("realizedProfit", realizedProfit)
+        put("tradeDate", tradeDate)
+        put("settledDate", settledDate)
+    }
+
+    private fun JSONObject.toTransaction(): Transaction = Transaction(
+        id = getString("id"),
+        institution = Institution.valueOf(getString("institution")),
+        accountName = getString("accountName"),
+        symbol = getString("symbol"),
+        name = getString("name"),
+        transactionType = TransactionType.valueOf(getString("transactionType")),
+        currency = Currency.valueOf(getString("currency")),
+        quantity = getDouble("quantity"),
+        price = getDouble("price"),
+        amount = getDouble("amount"),
+        realizedProfit = getDouble("realizedProfit"),
+        tradeDate = getString("tradeDate"),
+        settledDate = optString("settledDate")
+            .takeIf { it.isNotBlank() && it != "null" },
+    )
+
+    private fun PerformanceSummary.toJson(): JSONObject = JSONObject().apply {
+        put("realizedProfit", realizedProfit)
+        put("unrealizedProfit", unrealizedProfit)
+        put("dividendIncome", dividendIncome)
+        put("totalReturn", totalReturn)
+        put("returnRate", returnRate)
+        put("totalBuyCost", totalBuyCost)
+        put("valuationNote", valuationNote)
+    }
+
+    private fun JSONObject.toPerformance(): PerformanceSummary = PerformanceSummary(
+        realizedProfit = getDouble("realizedProfit"),
+        unrealizedProfit = getDouble("unrealizedProfit"),
+        dividendIncome = getDouble("dividendIncome"),
+        totalReturn = getDouble("totalReturn"),
+        returnRate = getDouble("returnRate"),
+        totalBuyCost = getDouble("totalBuyCost"),
+        valuationNote = optString("valuationNote"),
+    )
+
     private companion object {
         const val PREFERENCES_NAME = "asset_scope_portfolio"
         const val KEY_HOLDINGS = "holdings"
@@ -240,6 +329,7 @@ class LocalPortfolioRepository(
         const val KEY_SERVER_URL = "server_url"
         const val KEY_SERVER_TOKEN = "server_token"
         const val KEY_USD_TO_TWD = "usd_to_twd"
+        const val KEY_INSIGHTS = "portfolio_insights"
 
         val sampleHoldings = listOf(
             Holding(

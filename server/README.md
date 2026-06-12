@@ -125,6 +125,12 @@ and the linked SinoPac stock settlement account balance. It does not call any
 order endpoint. Shioaji cannot read unrelated SinoPac savings or time-deposit
 accounts; those still need an authorized Open Banking provider or a CSV import.
 
+The portfolio response also includes open-position acquisition lots from
+`list_position_detail` and realized sales returned by `list_profit_loss`.
+Shioaji does not expose every historical filled order indefinitely, so the
+server reports the records available from these official read-only endpoints
+without inventing missing history.
+
 If the server reports that the stock account is not API-signed, complete the
 official SinoPac API agreement and stock API test. A successful API Key login
 alone is not sufficient; `api.list_accounts()` must report `signed=True` for

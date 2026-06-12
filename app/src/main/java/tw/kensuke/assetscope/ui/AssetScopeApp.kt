@@ -24,6 +24,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -80,6 +82,7 @@ import tw.kensuke.assetscope.data.PortfolioRepository
 import tw.kensuke.assetscope.domain.model.Allocation
 import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.Holding
+import tw.kensuke.assetscope.domain.model.Institution
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PriceHistory
@@ -104,12 +107,14 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     var chartHistory by remember { mutableStateOf<PriceHistory?>(null) }
     var chartLoading by remember { mutableStateOf(false) }
     var chartError by remember { mutableStateOf<String?>(null) }
+    var chartDays by remember { mutableStateOf(90) }
     var showPortfolioTrend by remember { mutableStateOf(false) }
     var portfolioHistory by remember { mutableStateOf<PortfolioHistory?>(null) }
     var portfolioHistoryLoading by remember { mutableStateOf(false) }
     var portfolioHistoryError by remember { mutableStateOf<String?>(null) }
     var displayCurrency by rememberSaveable { mutableStateOf(Currency.TWD) }
     var checkingUpdate by remember { mutableStateOf(false) }
+    val pagerState = rememberPagerState(pageCount = { AppPage.entries.size })
     val snackbarHostState = remember { SnackbarHostState() }
     val csvLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -141,6 +146,11 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 .onSuccess { availableUpdate = it }
                 .onFailure { updateMessage = it.message }
             checkingUpdate = false
+        }
+    }
+    LaunchedEffect(state.serverUrl) {
+        if (state.serverUrl != null) {
+            runCatching { repository.syncFromServer() }
         }
     }
     LaunchedEffect(updateMessage) {
@@ -227,139 +237,173 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             )
         },
     ) { padding ->
-        LazyColumn(
+        Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                start = 18.dp,
-                top = 12.dp,
-                end = 18.dp,
-                bottom = 36.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            item {
-                TotalAssetOverviewCard(
-                    summary = state.summary,
-                    usdToTwd = state.rates.usdToTwd,
-                    rateSource = state.rates.source,
-                    rateUpdatedAt = state.rates.updatedAt,
-                    displayCurrency = displayCurrency,
-                    onCurrencyChange = { displayCurrency = it },
-                    onShowTrend = {
-                        showPortfolioTrend = true
-                        portfolioHistory = null
-                        portfolioHistoryError = null
-                        portfolioHistoryLoading = true
-                        coroutineScope.launch {
-                            runCatching { repository.loadPortfolioHistory() }
-                                .onSuccess { portfolioHistory = it }
-                                .onFailure {
-                                    portfolioHistoryError =
-                                        it.message ?: "無法載入資產歷史"
-                                }
-                            portfolioHistoryLoading = false
-                        }
-                    },
-                )
-            }
-            availableUpdate?.let { update ->
-                item {
-                    AppUpdateCard(
-                        update = update,
-                        currentVersion = BuildConfig.VERSION_NAME,
-                        isDownloading = updateDownloadId != null,
-                        onDownload = {
-                            coroutineScope.launch {
-                                runCatching { updateManager.download(update) }
-                                    .onSuccess {
-                                        updateDownloadId = it
-                                        updateMessage = "已開始下載 ${update.versionName}"
-                                    }
-                                    .onFailure {
-                                        updateMessage = it.message ?: "無法下載更新"
-                                    }
+            PageNavigation(
+                selectedPage = pagerState.currentPage,
+                onPageSelected = { page ->
+                    coroutineScope.launch { pagerState.animateScrollToPage(page) }
+                },
+            )
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f),
+            ) { page ->
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        start = 18.dp,
+                        top = 12.dp,
+                        end = 18.dp,
+                        bottom = 36.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                ) {
+                    when (AppPage.entries[page]) {
+                        AppPage.OVERVIEW -> {
+                            item {
+                                TotalAssetOverviewCard(
+                                    summary = state.summary,
+                                    usdToTwd = state.rates.usdToTwd,
+                                    rateSource = state.rates.source,
+                                    rateUpdatedAt = state.rates.updatedAt,
+                                    displayCurrency = displayCurrency,
+                                    onCurrencyChange = { displayCurrency = it },
+                                    onShowTrend = {
+                                        showPortfolioTrend = true
+                                        portfolioHistory = null
+                                        portfolioHistoryError = null
+                                        portfolioHistoryLoading = true
+                                        coroutineScope.launch {
+                                            runCatching { repository.loadPortfolioHistory() }
+                                                .onSuccess { portfolioHistory = it }
+                                                .onFailure {
+                                                    portfolioHistoryError =
+                                                        it.message ?: "無法載入資產歷史"
+                                                }
+                                            portfolioHistoryLoading = false
+                                        }
+                                    },
+                                )
                             }
-                        },
-                    )
-                }
-            }
-            if (state.transactions.isNotEmpty()) {
-                item {
-                    PerformanceCard(
-                        performance = state.performance,
-                        displayCurrency = displayCurrency,
-                        usdToTwd = state.rates.usdToTwd,
-                    )
-                }
-            }
-            item {
-                ServerSyncCard(
-                    configuredUrl = state.serverUrl,
-                    defaultUrl = "http://192.168.0.102:8787",
-                    onConnect = viewModel::configureServer,
-                    onSyncNow = viewModel::syncServerNow,
-                    onDisable = viewModel::disableServerSync,
-                )
-            }
-            item {
-                DistributionCard(
-                    assetAllocations = state.summary.assetAllocations,
-                    institutionAllocations = state.summary.institutionAllocations,
-                    displayCurrency = displayCurrency,
-                    usdToTwd = state.rates.usdToTwd,
-                )
-            }
-            item {
-                SectionHeader(
-                    title = "持倉明細",
-                    trailing = "${state.holdings.size} 項資產",
-                )
-            }
-            items(state.holdings, key = Holding::id) { holding ->
-                HoldingRow(
-                    holding = holding,
-                    displayCurrency = displayCurrency,
-                    usdToTwd = state.rates.usdToTwd,
-                    onShowChart = {
-                        chartHolding = holding
-                        chartHistory = null
-                        chartError = null
-                        chartLoading = true
-                        coroutineScope.launch {
-                            runCatching { repository.loadPriceHistory(holding) }
-                                .onSuccess { chartHistory = it }
-                                .onFailure {
-                                    chartError = it.message ?: "無法載入歷史行情"
+                            availableUpdate?.let { update ->
+                                item {
+                                    AppUpdateCard(
+                                        update = update,
+                                        currentVersion = BuildConfig.VERSION_NAME,
+                                        isDownloading = updateDownloadId != null,
+                                        onDownload = {
+                                            coroutineScope.launch {
+                                                runCatching { updateManager.download(update) }
+                                                    .onSuccess {
+                                                        updateDownloadId = it
+                                                        updateMessage =
+                                                            "已開始下載 ${update.versionName}"
+                                                    }
+                                                    .onFailure {
+                                                        updateMessage =
+                                                            it.message ?: "無法下載更新"
+                                                    }
+                                            }
+                                        },
+                                    )
                                 }
-                            chartLoading = false
+                            }
+                            if (state.transactions.isNotEmpty()) {
+                                item {
+                                    PerformanceCard(
+                                        performance = state.performance,
+                                        displayCurrency = displayCurrency,
+                                        usdToTwd = state.rates.usdToTwd,
+                                    )
+                                }
+                            }
+                            item {
+                                DistributionCard(
+                                    assetAllocations = state.summary.assetAllocations,
+                                    institutionAllocations =
+                                        state.summary.institutionAllocations,
+                                    displayCurrency = displayCurrency,
+                                    usdToTwd = state.rates.usdToTwd,
+                                )
+                            }
                         }
-                    },
-                )
-            }
-            if (state.transactions.isNotEmpty()) {
-                item {
-                    TransactionHistoryCard(
-                        transactions = state.transactions.take(20),
-                        totalCount = state.transactions.size,
-                        displayCurrency = displayCurrency,
-                        usdToTwd = state.rates.usdToTwd,
-                    )
+                        AppPage.HOLDINGS -> {
+                            item {
+                                SectionHeader(
+                                    title = "持倉明細",
+                                    trailing = "${state.holdings.size} 項資產",
+                                )
+                            }
+                            items(state.holdings, key = Holding::id) { holding ->
+                                HoldingRow(
+                                    holding = holding,
+                                    displayCurrency = displayCurrency,
+                                    usdToTwd = state.rates.usdToTwd,
+                                    onShowChart = {
+                                        chartHolding = holding
+                                        chartHistory = null
+                                        chartError = null
+                                        chartLoading = true
+                                        chartDays = 90
+                                        coroutineScope.launch {
+                                            runCatching {
+                                                repository.loadPriceHistory(
+                                                    holding,
+                                                    chartDays,
+                                                )
+                                            }
+                                                .onSuccess { chartHistory = it }
+                                                .onFailure {
+                                                    chartError =
+                                                        it.message ?: "無法載入歷史行情"
+                                                }
+                                            chartLoading = false
+                                        }
+                                    },
+                                )
+                            }
+                        }
+                        AppPage.TRANSACTIONS -> {
+                            item {
+                                TransactionPage(
+                                    transactions = state.transactions,
+                                    displayCurrency = displayCurrency,
+                                    usdToTwd = state.rates.usdToTwd,
+                                )
+                            }
+                        }
+                        AppPage.SYNC -> {
+                            item {
+                                ServerSyncCard(
+                                    configuredUrl = state.serverUrl,
+                                    defaultUrl = "http://192.168.0.102:8787",
+                                    onConnect = viewModel::configureServer,
+                                    onSyncNow = viewModel::syncServerNow,
+                                    onDisable = viewModel::disableServerSync,
+                                )
+                            }
+                            item {
+                                AutoSyncCard(
+                                    enabled = state.autoSyncFolder != null,
+                                    onChooseFolder = { folderLauncher.launch(null) },
+                                    onSyncNow = viewModel::syncNow,
+                                    onDisable = viewModel::disableAutoSync,
+                                )
+                            }
+                            item {
+                                ImportCard(
+                                    onImport = {
+                                        csvLauncher.launch(arrayOf("text/*", "text/csv"))
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
-            }
-            item {
-                AutoSyncCard(
-                    enabled = state.autoSyncFolder != null,
-                    onChooseFolder = { folderLauncher.launch(null) },
-                    onSyncNow = viewModel::syncNow,
-                    onDisable = viewModel::disableAutoSync,
-                )
-            }
-            item {
-                ImportCard(
-                    onImport = { csvLauncher.launch(arrayOf("text/*", "text/csv")) },
-                )
             }
         }
     }
@@ -372,6 +416,22 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             error = chartError,
             displayCurrency = displayCurrency,
             usdToTwd = state.rates.usdToTwd,
+            selectedDays = chartDays,
+            onPeriodChange = { days ->
+                if (days != chartDays) {
+                    chartDays = days
+                    chartLoading = true
+                    chartError = null
+                    coroutineScope.launch {
+                        runCatching { repository.loadPriceHistory(holding, days) }
+                            .onSuccess { chartHistory = it }
+                            .onFailure {
+                                chartError = it.message ?: "無法載入價格歷史"
+                            }
+                        chartLoading = false
+                    }
+                }
+            },
             onDismiss = {
                 chartHolding = null
                 chartHistory = null
@@ -392,6 +452,117 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 portfolioHistoryError = null
             },
         )
+    }
+}
+
+@Composable
+private fun PageNavigation(
+    selectedPage: Int,
+    onPageSelected: (Int) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        AppPage.entries.forEachIndexed { index, page ->
+            Button(
+                onClick = { onPageSelected(index) },
+                modifier = Modifier.weight(1f),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    horizontal = 4.dp,
+                    vertical = 8.dp,
+                ),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (selectedPage == index) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    contentColor = if (selectedPage == index) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                ),
+            ) {
+                Text(page.label, style = MaterialTheme.typography.labelMedium)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransactionPage(
+    transactions: List<Transaction>,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+) {
+    var filter by rememberSaveable { mutableStateOf(TransactionFilter.ALL) }
+    val filtered = remember(transactions, filter) {
+        when (filter) {
+            TransactionFilter.ALL -> transactions
+            TransactionFilter.FIRSTRADE -> transactions.filter {
+                it.institution == Institution.FIRSTRade
+            }
+            TransactionFilter.SINOPAC -> transactions.filter {
+                it.institution == Institution.SINOPAC_SECURITIES
+            }
+        }
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        SectionHeader("交易明細", "${transactions.size} 筆")
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TransactionFilter.entries.forEach { item ->
+                Button(
+                    onClick = { filter = item },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (filter == item) {
+                            MaterialTheme.colorScheme.secondary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        contentColor = if (filter == item) {
+                            MaterialTheme.colorScheme.onSecondary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    ),
+                ) {
+                    Text(item.label)
+                }
+            }
+        }
+        if (filtered.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                ),
+            ) {
+                Text(
+                    text = when (filter) {
+                        TransactionFilter.ALL ->
+                            "尚無交易資料。請到「同步」頁按立即同步。"
+                        TransactionFilter.FIRSTRADE ->
+                            "尚無 Firstrade 交易資料，請重新匯出交易 CSV。"
+                        TransactionFilter.SINOPAC ->
+                            "目前沒有 Shioaji 可查的永豐持倉批次或已實現賣出。"
+                    },
+                    modifier = Modifier.padding(20.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            TransactionHistoryCard(
+                transactions = filtered,
+                totalCount = filtered.size,
+                displayCurrency = displayCurrency,
+                usdToTwd = usdToTwd,
+            )
+        }
     }
 }
 
@@ -629,6 +800,11 @@ private fun TransactionRow(
                 fontWeight = FontWeight.Medium,
             )
             Text(
+                "${transaction.institution.displayName} · ${transaction.accountName}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.secondary,
+            )
+            Text(
                 when (transaction.transactionType) {
                     TransactionType.DIVIDEND -> transaction.name
                     else -> (
@@ -652,6 +828,13 @@ private fun TransactionRow(
                     "損益 ${(transaction.realizedProfit * multiplier).asSignedMoney(displayCurrency)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (transaction.realizedProfit >= 0) profitColor else lossColor,
+                )
+            }
+            transaction.settledDate?.let {
+                Text(
+                    "交割 $it",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -1352,6 +1535,19 @@ private val allocationColors = listOf(
 private enum class DistributionView {
     ASSET,
     INSTITUTION,
+}
+
+private enum class AppPage(val label: String) {
+    OVERVIEW("總覽"),
+    HOLDINGS("持股"),
+    TRANSACTIONS("交易"),
+    SYNC("同步"),
+}
+
+private enum class TransactionFilter(val label: String) {
+    ALL("全部"),
+    FIRSTRADE("Firstrade"),
+    SINOPAC("永豐"),
 }
 
 private fun List<Allocation>.groupSmallAllocations(maxSlices: Int = 7): List<Allocation> {

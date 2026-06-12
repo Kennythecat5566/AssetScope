@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     shioaji_enabled: bool = False
     shioaji_api_key: str = ""
     shioaji_secret_key: str = ""
+    shioaji_history_days: int = Field(default=365, ge=30, le=730)
 
 
 def get_settings() -> Settings:
