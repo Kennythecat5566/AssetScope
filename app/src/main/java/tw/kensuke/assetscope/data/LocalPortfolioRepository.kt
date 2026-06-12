@@ -130,6 +130,7 @@ class LocalPortfolioRepository(
             .apply()
         mutableServerUrl.value = normalizedUrl
         applyRemotePortfolio(remote)
+        refreshMarketSummariesSafely(normalizedUrl, normalizedToken)
         ServerSyncWorker.schedule(appContext)
         ServerSyncResult(
             importedCount = remote.holdings.size,
@@ -150,6 +151,7 @@ class LocalPortfolioRepository(
         require(remote.holdings.isNotEmpty()) { "伺服器目前沒有資產資料" }
 
         applyRemotePortfolio(remote)
+        refreshMarketSummariesSafely(baseUrl, token)
         ServerSyncResult(
             importedCount = remote.holdings.size,
             sourceCount = remote.sourceCount,
@@ -190,11 +192,17 @@ class LocalPortfolioRepository(
             ?: return@withContext
         val token = preferences.getString(KEY_SERVER_TOKEN, null)
             ?: return@withContext
-        val summaries = PortfolioApiClient().fetchMarketSummaries(
-            baseUrl = baseUrl,
-            apiToken = token,
-            holdings = mutableHoldings.value,
-        )
+        refreshMarketSummariesSafely(baseUrl, token)
+    }
+
+    private fun refreshMarketSummariesSafely(baseUrl: String, token: String) {
+        val summaries = runCatching {
+            PortfolioApiClient().fetchMarketSummaries(
+                baseUrl = baseUrl,
+                apiToken = token,
+                holdings = mutableHoldings.value,
+            )
+        }.getOrElse { return }
         mutableMarketSummaries.value = summaries.associateBy(MarketSummary::key)
         saveMarketSummaries(summaries)
     }

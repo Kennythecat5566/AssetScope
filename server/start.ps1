@@ -26,12 +26,23 @@ if ($ExistingListener) {
                 (Test-Path -LiteralPath $EnvFile) -and
                 ((Get-Item -LiteralPath $EnvFile).LastWriteTimeUtc -gt
                     $Owner.StartTime.ToUniversalTime())
-            if (-not $ConfigChanged) {
+            $SourceChanged = $Owner -and (
+                Get-ChildItem `
+                    -LiteralPath (Join-Path $ServerRoot "app") `
+                    -Recurse `
+                    -File `
+                    -Include "*.py" |
+                Where-Object {
+                    $_.LastWriteTimeUtc -gt $Owner.StartTime.ToUniversalTime()
+                } |
+                Select-Object -First 1
+            )
+            if (-not $ConfigChanged -and -not $SourceChanged) {
                 Write-Host "AssetScope Server is already running on port 8787."
                 exit 0
             }
 
-            Write-Host "Configuration changed. Restarting AssetScope Server..."
+            Write-Host "AssetScope configuration or source changed. Restarting server..."
             Stop-Process -Id $ExistingListener.OwningProcess -Force
             Start-Sleep -Seconds 2
         }
