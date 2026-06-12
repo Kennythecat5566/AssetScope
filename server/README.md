@@ -190,3 +190,16 @@ by the setup script, for example `http://100.x.y.z:8787`, in AssetScope.
 
 The separate Windows Firewall rule allows TCP 8787 only from Tailscale's
 `100.64.0.0/10` address range. Do not configure router port forwarding.
+
+## Price History
+
+The authenticated history endpoint provides daily OHLCV candles for charting:
+
+```text
+GET /api/v1/history/{institution}/{symbol}?days=90
+```
+
+Taiwan stock candles come from official Shioaji historical K-bars and are
+aggregated into daily candles. Firstrade US symbols use Yahoo Finance daily
+history. Results are cached on the PC for 30 minutes. Cash and deposit holdings
+do not expose a chart action.

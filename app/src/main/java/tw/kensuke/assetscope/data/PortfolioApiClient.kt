@@ -8,6 +8,8 @@ import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.Institution
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
+import tw.kensuke.assetscope.domain.model.PriceCandle
+import tw.kensuke.assetscope.domain.model.PriceHistory
 import tw.kensuke.assetscope.domain.model.Transaction
 import tw.kensuke.assetscope.domain.model.TransactionType
 import java.net.HttpURLConnection
@@ -45,6 +47,35 @@ class PortfolioApiClient {
                 errorMessage(status, body)
             }
             parse(body)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    fun fetchPriceHistory(
+        baseUrl: String,
+        apiToken: String,
+        holding: Holding,
+        days: Int,
+    ): PriceHistory {
+        val normalizedUrl = validateAndNormalizeBaseUrl(baseUrl)
+        val token = normalizeApiToken(apiToken)
+        val connection = URI(
+            "$normalizedUrl/api/v1/history/${holding.institution.name}/${holding.symbol}?days=$days",
+        ).toURL().openConnection() as HttpURLConnection
+
+        return try {
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 30_000
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            val status = connection.responseCode
+            val body = (if (status in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                .orEmpty()
+            require(status in 200..299) { errorMessage(status, body) }
+            JSONObject(body).toPriceHistory()
         } finally {
             connection.disconnect()
         }
@@ -112,6 +143,27 @@ class PortfolioApiClient {
         totalBuyCost = getDouble("total_buy_cost"),
         valuationNote = optString("valuation_note"),
     )
+
+    private fun JSONObject.toPriceHistory(): PriceHistory {
+        val candleArray = getJSONArray("candles")
+        return PriceHistory(
+            symbol = getString("symbol"),
+            currency = Currency.valueOf(getString("currency")),
+            source = getString("source"),
+            candles = List(candleArray.length()) { index ->
+                candleArray.getJSONObject(index).let { candle ->
+                    PriceCandle(
+                        date = candle.getString("date"),
+                        open = candle.getDouble("open"),
+                        high = candle.getDouble("high"),
+                        low = candle.getDouble("low"),
+                        close = candle.getDouble("close"),
+                        volume = candle.getDouble("volume"),
+                    )
+                }
+            },
+        )
+    }
 
     private fun validateAndNormalizeBaseUrl(value: String): String {
         val normalized = value.trim().trimEnd('/')

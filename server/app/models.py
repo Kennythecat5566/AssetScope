@@ -79,3 +79,19 @@ class PortfolioResponse(BaseModel):
     transactions: list[Transaction] = []
     performance: PerformanceSummary = PerformanceSummary()
     sources: list[str]
+
+
+class PriceCandle(BaseModel):
+    date: str
+    open: float = Field(gt=0)
+    high: float = Field(gt=0)
+    low: float = Field(gt=0)
+    close: float = Field(gt=0)
+    volume: float = Field(ge=0)
+
+
+class PriceHistoryResponse(BaseModel):
+    symbol: str
+    currency: Currency
+    source: str
+    candles: list[PriceCandle]

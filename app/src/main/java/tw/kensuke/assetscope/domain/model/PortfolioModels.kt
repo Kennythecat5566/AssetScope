@@ -77,6 +77,22 @@ data class Holding(
         get() = marketValue - cost
 }
 
+data class PriceCandle(
+    val date: String,
+    val open: Double,
+    val high: Double,
+    val low: Double,
+    val close: Double,
+    val volume: Double,
+)
+
+data class PriceHistory(
+    val symbol: String,
+    val currency: Currency,
+    val source: String,
+    val candles: List<PriceCandle>,
+)
+
 data class ExchangeRates(
     val usdToTwd: Double = 32.4,
 )

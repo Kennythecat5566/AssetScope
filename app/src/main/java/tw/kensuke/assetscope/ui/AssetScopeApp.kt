@@ -80,6 +80,7 @@ import tw.kensuke.assetscope.domain.model.Allocation
 import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
+import tw.kensuke.assetscope.domain.model.PriceHistory
 import tw.kensuke.assetscope.domain.model.PortfolioSummary
 import tw.kensuke.assetscope.domain.model.Transaction
 import tw.kensuke.assetscope.domain.model.TransactionType
@@ -97,6 +98,10 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     var availableUpdate by remember { mutableStateOf<AppUpdate?>(null) }
     var updateDownloadId by remember { mutableStateOf<Long?>(null) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
+    var chartHolding by remember { mutableStateOf<Holding?>(null) }
+    var chartHistory by remember { mutableStateOf<PriceHistory?>(null) }
+    var chartLoading by remember { mutableStateOf(false) }
+    var chartError by remember { mutableStateOf<String?>(null) }
     val snackbarHostState = remember { SnackbarHostState() }
     val csvLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -243,7 +248,23 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 )
             }
             items(state.holdings, key = Holding::id) { holding ->
-                HoldingRow(holding)
+                HoldingRow(
+                    holding = holding,
+                    onShowChart = {
+                        chartHolding = holding
+                        chartHistory = null
+                        chartError = null
+                        chartLoading = true
+                        coroutineScope.launch {
+                            runCatching { repository.loadPriceHistory(holding) }
+                                .onSuccess { chartHistory = it }
+                                .onFailure {
+                                    chartError = it.message ?: "無法載入歷史行情"
+                                }
+                            chartLoading = false
+                        }
+                    },
+                )
             }
             if (state.transactions.isNotEmpty()) {
                 item {
@@ -267,6 +288,20 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 )
             }
         }
+    }
+
+    chartHolding?.let { holding ->
+        StockChartDialog(
+            holding = holding,
+            history = chartHistory,
+            loading = chartLoading,
+            error = chartError,
+            onDismiss = {
+                chartHolding = null
+                chartHistory = null
+                chartError = null
+            },
+        )
     }
 }
 
@@ -895,7 +930,10 @@ private fun AllocationPie(
 }
 
 @Composable
-private fun HoldingRow(holding: Holding) {
+private fun HoldingRow(
+    holding: Holding,
+    onShowChart: () -> Unit,
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -975,6 +1013,21 @@ private fun HoldingRow(holding: Holding) {
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            if (holding.assetType == tw.kensuke.assetscope.domain.model.AssetType.STOCK ||
+                holding.assetType == tw.kensuke.assetscope.domain.model.AssetType.ETF
+            ) {
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = onShowChart,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                    ),
+                ) {
+                    Text("查看 K 線與趨勢")
+                }
             }
         }
     }

@@ -15,6 +15,7 @@ import tw.kensuke.assetscope.domain.model.ExchangeRates
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.Institution
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
+import tw.kensuke.assetscope.domain.model.PriceHistory
 
 class LocalPortfolioRepository(
     context: Context,
@@ -133,6 +134,22 @@ class LocalPortfolioRepository(
         ServerSyncResult(
             importedCount = remote.holdings.size,
             sourceCount = remote.sourceCount,
+        )
+    }
+
+    override suspend fun loadPriceHistory(
+        holding: Holding,
+        days: Int,
+    ): PriceHistory = withContext(Dispatchers.IO) {
+        val baseUrl = preferences.getString(KEY_SERVER_URL, null)
+            ?: error("請先連接電腦資產伺服器")
+        val token = preferences.getString(KEY_SERVER_TOKEN, null)
+            ?: error("尚未設定 API Token")
+        PortfolioApiClient().fetchPriceHistory(
+            baseUrl = baseUrl,
+            apiToken = token,
+            holding = holding,
+            days = days,
         )
     }
 
