@@ -37,6 +37,8 @@ class Holding(BaseModel):
 
 class ExchangeRates(BaseModel):
     usd_to_twd: float = Field(gt=0)
+    updated_at: datetime | None = None
+    source: str = "configured"
 
 
 class TransactionType(StrEnum):
@@ -95,3 +97,13 @@ class PriceHistoryResponse(BaseModel):
     currency: Currency
     source: str
     candles: list[PriceCandle]
+
+
+class PortfolioHistoryPoint(BaseModel):
+    timestamp: datetime
+    value_twd: float = Field(ge=0)
+
+
+class PortfolioHistoryResponse(BaseModel):
+    currency: Currency = Currency.TWD
+    points: list[PortfolioHistoryPoint]

@@ -4,7 +4,13 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 
 from app.config import Settings, get_settings
 from app.connectors.price_history import load_price_history
-from app.models import Institution, PortfolioResponse, PriceHistoryResponse
+from app.models import (
+    Institution,
+    PortfolioHistoryResponse,
+    PortfolioResponse,
+    PriceHistoryResponse,
+)
+from app.portfolio_history import load_portfolio_history
 from app.service import build_portfolio
 
 app = FastAPI(
@@ -78,3 +84,23 @@ def price_history(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(error),
         ) from error
+
+
+@app.get(
+    "/api/v1/portfolio/history",
+    response_model=PortfolioHistoryResponse,
+    dependencies=[Depends(authorize)],
+)
+def portfolio_history(
+    days: int = 365,
+    settings: Settings = Depends(get_settings),
+) -> PortfolioHistoryResponse:
+    if days < 7 or days > 730:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="days must be between 7 and 730",
+        )
+    return load_portfolio_history(
+        settings.import_dir.parent / "cache" / "portfolio-history.json",
+        days,
+    )

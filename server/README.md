@@ -22,6 +22,10 @@ port `8787`, it reports that the server is running and exits successfully.
 The API listens on `http://0.0.0.0:8787`. On the current network, the Android
 app should use `http://192.168.0.102:8787`.
 
+USD/TWD is refreshed automatically and cached for six hours. If the quote
+service is temporarily unavailable, the server keeps using the latest cached
+rate, then falls back to `ASSETSCOPE_USD_TO_TWD`.
+
 Health check:
 
 ```powershell
@@ -198,6 +202,17 @@ The authenticated history endpoint provides daily OHLCV candles for charting:
 ```text
 GET /api/v1/history/{institution}/{symbol}?days=90
 ```
+
+The portfolio endpoint records one net-worth snapshot per day. The app reads
+the accumulated timeline from:
+
+```text
+GET /api/v1/portfolio/history?days=365
+```
+
+History starts accumulating after this server version is installed. Snapshots
+and exchange-rate caches are stored under `data/cache`, which is excluded from
+Git.
 
 Taiwan stock candles come from official Shioaji historical K-bars and are
 aggregated into daily candles. Firstrade US symbols use Yahoo Finance daily

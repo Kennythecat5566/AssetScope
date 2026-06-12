@@ -5,6 +5,7 @@ import android.net.Uri
 import tw.kensuke.assetscope.domain.model.ExchangeRates
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
+import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PriceHistory
 
 interface PortfolioRepository {
@@ -21,6 +22,7 @@ interface PortfolioRepository {
     suspend fun configureServer(baseUrl: String, apiToken: String): ServerSyncResult
     suspend fun syncFromServer(): ServerSyncResult
     suspend fun loadPriceHistory(holding: Holding, days: Int = 90): PriceHistory
+    suspend fun loadPortfolioHistory(days: Int = 365): PortfolioHistory
     suspend fun disableServerSync()
     suspend fun resetToSampleData()
 }

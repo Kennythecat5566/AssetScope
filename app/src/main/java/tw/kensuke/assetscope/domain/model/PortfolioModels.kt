@@ -95,6 +95,17 @@ data class PriceHistory(
 
 data class ExchangeRates(
     val usdToTwd: Double = 32.4,
+    val updatedAt: String? = null,
+    val source: String = "configured",
+)
+
+data class PortfolioHistoryPoint(
+    val timestamp: String,
+    val valueTwd: Double,
+)
+
+data class PortfolioHistory(
+    val points: List<PortfolioHistoryPoint>,
 )
 
 data class Allocation(

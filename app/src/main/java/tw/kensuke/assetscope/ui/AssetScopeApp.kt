@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Computer
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.SystemUpdate
+import androidx.compose.material.icons.automirrored.outlined.ShowChart
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -80,6 +81,7 @@ import tw.kensuke.assetscope.domain.model.Allocation
 import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
+import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PriceHistory
 import tw.kensuke.assetscope.domain.model.PortfolioSummary
 import tw.kensuke.assetscope.domain.model.Transaction
@@ -102,6 +104,11 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     var chartHistory by remember { mutableStateOf<PriceHistory?>(null) }
     var chartLoading by remember { mutableStateOf(false) }
     var chartError by remember { mutableStateOf<String?>(null) }
+    var showPortfolioTrend by remember { mutableStateOf(false) }
+    var portfolioHistory by remember { mutableStateOf<PortfolioHistory?>(null) }
+    var portfolioHistoryLoading by remember { mutableStateOf(false) }
+    var portfolioHistoryError by remember { mutableStateOf<String?>(null) }
+    var displayCurrency by rememberSaveable { mutableStateOf(Currency.TWD) }
     var checkingUpdate by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val csvLauncher = rememberLauncherForActivityResult(
@@ -232,7 +239,31 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             ),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            item { TotalAssetCard(state.summary, state.rates.usdToTwd) }
+            item {
+                TotalAssetOverviewCard(
+                    summary = state.summary,
+                    usdToTwd = state.rates.usdToTwd,
+                    rateSource = state.rates.source,
+                    rateUpdatedAt = state.rates.updatedAt,
+                    displayCurrency = displayCurrency,
+                    onCurrencyChange = { displayCurrency = it },
+                    onShowTrend = {
+                        showPortfolioTrend = true
+                        portfolioHistory = null
+                        portfolioHistoryError = null
+                        portfolioHistoryLoading = true
+                        coroutineScope.launch {
+                            runCatching { repository.loadPortfolioHistory() }
+                                .onSuccess { portfolioHistory = it }
+                                .onFailure {
+                                    portfolioHistoryError =
+                                        it.message ?: "無法載入資產歷史"
+                                }
+                            portfolioHistoryLoading = false
+                        }
+                    },
+                )
+            }
             availableUpdate?.let { update ->
                 item {
                     AppUpdateCard(
@@ -255,7 +286,13 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 }
             }
             if (state.transactions.isNotEmpty()) {
-                item { PerformanceCard(state.performance) }
+                item {
+                    PerformanceCard(
+                        performance = state.performance,
+                        displayCurrency = displayCurrency,
+                        usdToTwd = state.rates.usdToTwd,
+                    )
+                }
             }
             item {
                 ServerSyncCard(
@@ -270,6 +307,8 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 DistributionCard(
                     assetAllocations = state.summary.assetAllocations,
                     institutionAllocations = state.summary.institutionAllocations,
+                    displayCurrency = displayCurrency,
+                    usdToTwd = state.rates.usdToTwd,
                 )
             }
             item {
@@ -281,6 +320,8 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             items(state.holdings, key = Holding::id) { holding ->
                 HoldingRow(
                     holding = holding,
+                    displayCurrency = displayCurrency,
+                    usdToTwd = state.rates.usdToTwd,
                     onShowChart = {
                         chartHolding = holding
                         chartHistory = null
@@ -302,6 +343,8 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                     TransactionHistoryCard(
                         transactions = state.transactions.take(20),
                         totalCount = state.transactions.size,
+                        displayCurrency = displayCurrency,
+                        usdToTwd = state.rates.usdToTwd,
                     )
                 }
             }
@@ -327,10 +370,26 @@ fun AssetScopeApp(repository: PortfolioRepository) {
             history = chartHistory,
             loading = chartLoading,
             error = chartError,
+            displayCurrency = displayCurrency,
+            usdToTwd = state.rates.usdToTwd,
             onDismiss = {
                 chartHolding = null
                 chartHistory = null
                 chartError = null
+            },
+        )
+    }
+    if (showPortfolioTrend) {
+        PortfolioTrendDialog(
+            history = portfolioHistory,
+            loading = portfolioHistoryLoading,
+            error = portfolioHistoryError,
+            displayCurrency = displayCurrency,
+            usdToTwd = state.rates.usdToTwd,
+            onDismiss = {
+                showPortfolioTrend = false
+                portfolioHistory = null
+                portfolioHistoryError = null
             },
         )
     }
@@ -408,7 +467,12 @@ private fun AppUpdateCard(
 }
 
 @Composable
-private fun PerformanceCard(performance: PerformanceSummary) {
+private fun PerformanceCard(
+    performance: PerformanceSummary,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+) {
+    val multiplier = if (displayCurrency == Currency.TWD) usdToTwd else 1.0
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
@@ -431,12 +495,14 @@ private fun PerformanceCard(performance: PerformanceSummary) {
             ) {
                 PerformanceMetric(
                     label = "已實現損益",
-                    value = performance.realizedProfit.asSignedUsd(),
+                    value = (performance.realizedProfit * multiplier)
+                        .asSignedMoney(displayCurrency),
                     modifier = Modifier.weight(1f),
                 )
                 PerformanceMetric(
                     label = "未實現損益",
-                    value = performance.unrealizedProfit.asSignedUsd(),
+                    value = (performance.unrealizedProfit * multiplier)
+                        .asSignedMoney(displayCurrency),
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -447,12 +513,13 @@ private fun PerformanceCard(performance: PerformanceSummary) {
             ) {
                 PerformanceMetric(
                     label = "股息收入",
-                    value = performance.dividendIncome.asUsd(),
+                    value = (performance.dividendIncome * multiplier).asMoney(displayCurrency),
                     modifier = Modifier.weight(1f),
                 )
                 PerformanceMetric(
                     label = "總投資報酬",
-                    value = performance.totalReturn.asSignedUsd(),
+                    value = (performance.totalReturn * multiplier)
+                        .asSignedMoney(displayCurrency),
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -496,6 +563,8 @@ private fun PerformanceMetric(
 private fun TransactionHistoryCard(
     transactions: List<Transaction>,
     totalCount: Int,
+    displayCurrency: Currency,
+    usdToTwd: Double,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -514,7 +583,7 @@ private fun TransactionHistoryCard(
             SectionHeader("交易時間軸", "最近 ${transactions.size}／$totalCount 筆")
             Spacer(Modifier.height(12.dp))
             transactions.forEachIndexed { index, transaction ->
-                TransactionRow(transaction)
+                TransactionRow(transaction, displayCurrency, usdToTwd)
                 if (index != transactions.lastIndex) {
                     HorizontalDivider(
                         modifier = Modifier.padding(vertical = 12.dp),
@@ -527,7 +596,12 @@ private fun TransactionHistoryCard(
 }
 
 @Composable
-private fun TransactionRow(transaction: Transaction) {
+private fun TransactionRow(
+    transaction: Transaction,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+) {
+    val multiplier = currencyMultiplier(transaction.currency, displayCurrency, usdToTwd)
     val typeColor = when (transaction.transactionType) {
         TransactionType.BUY -> lossColor
         TransactionType.SELL -> profitColor
@@ -557,7 +631,10 @@ private fun TransactionRow(transaction: Transaction) {
             Text(
                 when (transaction.transactionType) {
                     TransactionType.DIVIDEND -> transaction.name
-                    else -> "${transaction.quantity.asQuantity()} × ${transaction.price.asUsd()}"
+                    else -> (
+                        "${transaction.quantity.asQuantity()} × " +
+                            (transaction.price * multiplier).asMoney(displayCurrency)
+                        )
                 },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -567,12 +644,12 @@ private fun TransactionRow(transaction: Transaction) {
         }
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                transaction.amount.asSignedUsd(),
+                (transaction.amount * multiplier).asSignedMoney(displayCurrency),
                 fontWeight = FontWeight.Medium,
             )
             if (transaction.transactionType == TransactionType.SELL) {
                 Text(
-                    "損益 ${transaction.realizedProfit.asSignedUsd()}",
+                    "損益 ${(transaction.realizedProfit * multiplier).asSignedMoney(displayCurrency)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = if (transaction.realizedProfit >= 0) profitColor else lossColor,
                 )
@@ -764,7 +841,16 @@ private fun AutoSyncCard(
 }
 
 @Composable
-private fun TotalAssetCard(summary: PortfolioSummary, usdToTwd: Double) {
+private fun TotalAssetOverviewCard(
+    summary: PortfolioSummary,
+    usdToTwd: Double,
+    rateSource: String,
+    rateUpdatedAt: String?,
+    displayCurrency: Currency,
+    onCurrencyChange: (Currency) -> Unit,
+    onShowTrend: () -> Unit,
+) {
+    val multiplier = if (displayCurrency == Currency.TWD) 1.0 else 1 / usdToTwd
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -774,40 +860,98 @@ private fun TotalAssetCard(summary: PortfolioSummary, usdToTwd: Double) {
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 28.dp)) {
-            Text(
-                text = "TOTAL BALANCE  /  總資產淨值",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.68f),
-            )
+        Column(modifier = Modifier.padding(horizontal = 24.dp, vertical = 24.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "TOTAL BALANCE / 總資產淨值",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.68f),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    CurrencyButton(
+                        currency = Currency.TWD,
+                        selected = displayCurrency == Currency.TWD,
+                        onClick = onCurrencyChange,
+                    )
+                    CurrencyButton(
+                        currency = Currency.USD,
+                        selected = displayCurrency == Currency.USD,
+                        onClick = onCurrencyChange,
+                    )
+                }
+            }
             Spacer(Modifier.height(12.dp))
             Text(
-                text = summary.totalValueTwd.asTwd(),
+                text = (summary.totalValueTwd * multiplier).asMoney(displayCurrency),
                 style = MaterialTheme.typography.headlineLarge,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
             )
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(24.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Metric(
                     label = "未實現損益",
-                    value = summary.unrealizedProfitTwd.asSignedTwd(),
-                    light = false,
+                    value = (summary.unrealizedProfitTwd * multiplier)
+                        .asSignedMoney(displayCurrency),
                 )
-                Metric(
-                    label = "報酬率",
-                    value = summary.returnRate.asPercent(),
-                    light = false,
-                )
-                Metric(
-                    label = "USD/TWD",
-                    value = "%.2f".format(usdToTwd),
-                    light = false,
-                )
+                Metric(label = "報酬率", value = summary.returnRate.asPercent())
+                Metric(label = "USD/TWD", value = "%.3f".format(usdToTwd))
+            }
+            Spacer(Modifier.height(16.dp))
+            Text(
+                "匯率：$rateSource"
+                    + (rateUpdatedAt?.let { " · ${it.take(16).replace('T', ' ')} UTC" } ?: ""),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            Button(
+                onClick = onShowTrend,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                ),
+            ) {
+                Icon(Icons.AutoMirrored.Outlined.ShowChart, contentDescription = null)
+                Spacer(Modifier.size(8.dp))
+                Text("查看總資產趨勢")
             }
         }
+    }
+}
+
+@Composable
+private fun CurrencyButton(
+    currency: Currency,
+    selected: Boolean,
+    onClick: (Currency) -> Unit,
+) {
+    Button(
+        onClick = { onClick(currency) },
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+            horizontal = 10.dp,
+            vertical = 4.dp,
+        ),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            },
+            contentColor = if (selected) {
+                MaterialTheme.colorScheme.onPrimary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        ),
+    ) {
+        Text(currency.name, style = MaterialTheme.typography.labelSmall)
     }
 }
 
@@ -815,6 +959,8 @@ private fun TotalAssetCard(summary: PortfolioSummary, usdToTwd: Double) {
 private fun DistributionCard(
     assetAllocations: List<Allocation>,
     institutionAllocations: List<Allocation>,
+    displayCurrency: Currency,
+    usdToTwd: Double,
 ) {
     var view by rememberSaveable { mutableStateOf(DistributionView.ASSET) }
     val allocations = remember(view, assetAllocations, institutionAllocations) {
@@ -880,7 +1026,9 @@ private fun DistributionCard(
                         )
                         Column(horizontalAlignment = Alignment.End) {
                             Text(
-                                allocation.valueTwd.asTwd(),
+                                allocation.valueTwd
+                                    .toDisplayCurrency(displayCurrency, usdToTwd)
+                                    .asMoney(displayCurrency),
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
@@ -969,8 +1117,11 @@ private fun AllocationPie(
 @Composable
 private fun HoldingRow(
     holding: Holding,
+    displayCurrency: Currency,
+    usdToTwd: Double,
     onShowChart: () -> Unit,
 ) {
+    val multiplier = currencyMultiplier(holding.currency, displayCurrency, usdToTwd)
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1004,9 +1155,13 @@ private fun HoldingRow(
                     )
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(holding.marketValue.asMoney(holding.currency), fontWeight = FontWeight.Bold)
                     Text(
-                        text = holding.unrealizedProfit.asSignedMoney(holding.currency),
+                        (holding.marketValue * multiplier).asMoney(displayCurrency),
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = (holding.unrealizedProfit * multiplier)
+                            .asSignedMoney(displayCurrency),
                         color = if (holding.unrealizedProfit >= 0) profitColor else lossColor,
                         style = MaterialTheme.typography.bodySmall,
                     )
@@ -1020,12 +1175,12 @@ private fun HoldingRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    "均價 ${holding.averageCost.asMoney(holding.currency)}",
+                    "均價 ${(holding.averageCost * multiplier).asMoney(displayCurrency)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    "估價 ${holding.marketPrice.asMoney(holding.currency)}",
+                    "估價 ${(holding.marketPrice * multiplier).asMoney(displayCurrency)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1156,18 +1311,25 @@ private val twdFormatter = NumberFormat.getCurrencyInstance(Locale.TAIWAN).apply
     maximumFractionDigits = 0
 }
 
-private fun Double.asTwd(): String = twdFormatter.format(this)
-private fun Double.asSignedTwd(): String = "${if (this >= 0) "+" else ""}${asTwd()}"
 private fun Double.asPercent(unsigned: Boolean = false): String =
     "${if (!unsigned && this >= 0) "+" else ""}%.1f%%".format(this * 100)
 private fun Double.asMoney(currency: Currency): String = when (currency) {
     Currency.TWD -> twdFormatter.format(this)
     Currency.USD -> "US$${"%,.2f".format(this)}"
 }
-private fun Double.asUsd(): String = "US$${"%,.2f".format(this)}"
-private fun Double.asSignedUsd(): String = "${if (this >= 0) "+" else ""}${asUsd()}"
 private fun Double.asSignedMoney(currency: Currency): String =
     "${if (this >= 0) "+" else ""}${asMoney(currency)}"
+private fun Double.toDisplayCurrency(currency: Currency, usdToTwd: Double): Double =
+    if (currency == Currency.TWD) this else this / usdToTwd
+private fun currencyMultiplier(
+    source: Currency,
+    target: Currency,
+    usdToTwd: Double,
+): Double = when {
+    source == target -> 1.0
+    source == Currency.USD -> usdToTwd
+    else -> 1 / usdToTwd
+}
 private fun Double.asQuantity(): String =
     if (this % 1.0 == 0.0) "%,.0f".format(this) else "%,.2f".format(this)
 

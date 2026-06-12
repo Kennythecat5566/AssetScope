@@ -8,6 +8,8 @@ import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.Institution
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
+import tw.kensuke.assetscope.domain.model.PortfolioHistory
+import tw.kensuke.assetscope.domain.model.PortfolioHistoryPoint
 import tw.kensuke.assetscope.domain.model.PriceCandle
 import tw.kensuke.assetscope.domain.model.PriceHistory
 import tw.kensuke.assetscope.domain.model.Transaction
@@ -81,10 +83,49 @@ class PortfolioApiClient {
         }
     }
 
+    fun fetchPortfolioHistory(
+        baseUrl: String,
+        apiToken: String,
+        days: Int,
+    ): PortfolioHistory {
+        val normalizedUrl = validateAndNormalizeBaseUrl(baseUrl)
+        val token = normalizeApiToken(apiToken)
+        val connection = URI(
+            "$normalizedUrl/api/v1/portfolio/history?days=$days",
+        ).toURL().openConnection() as HttpURLConnection
+
+        return try {
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 15_000
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            val status = connection.responseCode
+            val body = (if (status in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()
+                ?.use { it.readText() }
+                .orEmpty()
+            require(status in 200..299) { errorMessage(status, body) }
+            val points = JSONObject(body).getJSONArray("points")
+            PortfolioHistory(
+                points = List(points.length()) { index ->
+                    points.getJSONObject(index).let {
+                        PortfolioHistoryPoint(
+                            timestamp = it.getString("timestamp"),
+                            valueTwd = it.getDouble("value_twd"),
+                        )
+                    }
+                },
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     private fun parse(body: String): RemotePortfolio {
         val root = JSONObject(body)
         require(root.getInt("schema_version") in 1..2) { "不支援的伺服器資料版本" }
-        val rate = root.getJSONObject("exchange_rates").getDouble("usd_to_twd")
+        val exchangeRates = root.getJSONObject("exchange_rates")
+        val rate = exchangeRates.getDouble("usd_to_twd")
         val holdingArray = root.getJSONArray("holdings")
         val holdings = List(holdingArray.length()) { index ->
             holdingArray.getJSONObject(index).toHolding()
@@ -96,7 +137,12 @@ class PortfolioApiClient {
             ?: PerformanceSummary()
         return RemotePortfolio(
             holdings = holdings,
-            rates = ExchangeRates(usdToTwd = rate),
+            rates = ExchangeRates(
+                usdToTwd = rate,
+                updatedAt = exchangeRates.optString("updated_at")
+                    .takeIf { it.isNotBlank() && it != "null" },
+                source = exchangeRates.optString("source", "configured"),
+            ),
             sourceCount = root.getJSONArray("sources").length(),
             insights = PortfolioInsights(
                 transactions = transactions,
