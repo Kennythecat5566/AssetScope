@@ -10,6 +10,12 @@ class FakeShioaji:
         self.stock_account = SimpleNamespace(signed=True)
         self.logged_out = False
         self.requested_unit = None
+        self.Contracts = SimpleNamespace(
+            Stocks={
+                "2330": SimpleNamespace(name="台積電"),
+                "0050": SimpleNamespace(name="元大台灣50"),
+            },
+        )
 
     def login(
         self,
@@ -17,11 +23,13 @@ class FakeShioaji:
         api_key: str,
         secret_key: str,
         fetch_contract: bool,
+        contracts_timeout: int,
         subscribe_trade: bool,
     ) -> None:
         assert api_key == "test-api-key"
         assert secret_key == "test-secret-key"
-        assert not fetch_contract
+        assert fetch_contract
+        assert contracts_timeout == 30_000
         assert not subscribe_trade
 
     def list_positions(self, *, account: object, unit: object) -> list[object]:
@@ -100,6 +108,7 @@ def test_loads_stock_positions_and_settlement_balance() -> None:
 
     assert len(holdings) == 2
     assert holdings[0].institution == Institution.SINOPAC_SECURITIES
+    assert holdings[0].name == "台積電"
     assert holdings[0].quantity == 1250
     assert holdings[1].institution == Institution.SINOPAC_BANK
     assert holdings[1].asset_type == AssetType.DEPOSIT
@@ -108,6 +117,7 @@ def test_loads_stock_positions_and_settlement_balance() -> None:
     assert api.logged_out
     assert len(data.transactions) == 3
     assert data.transactions[0].transaction_type.value == "SELL"
+    assert data.transactions[0].name == "元大台灣50"
     buys_by_date = {
         item.trade_date: item
         for item in data.transactions

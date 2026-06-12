@@ -51,7 +51,8 @@ def load_shioaji_data(
             api.login(
                 api_key=settings.shioaji_api_key,
                 secret_key=settings.shioaji_secret_key,
-                fetch_contract=False,
+                fetch_contract=True,
+                contracts_timeout=30_000,
                 subscribe_trade=False,
             )
             logged_in = True
@@ -69,7 +70,13 @@ def load_shioaji_data(
                 account=stock_account,
                 unit=sj.Unit.Share,
             )
-            holdings = [_position_to_holding(position) for position in positions]
+            holdings = [
+                _position_to_holding(
+                    position,
+                    _stock_name(api, str(position.code)),
+                )
+                for position in positions
+            ]
             position_details = (
                 api.list_position_detail(account=stock_account)
                 if positions
@@ -78,6 +85,7 @@ def load_shioaji_data(
             transactions = _position_details_to_transactions(
                 positions,
                 position_details,
+                api,
             )
             begin_date = date.today() - timedelta(days=settings.shioaji_history_days)
             profit_losses = api.list_profit_loss(
@@ -86,7 +94,7 @@ def load_shioaji_data(
                 end_date=date.today().isoformat(),
                 unit=sj.Unit.Share,
             )
-            transactions.extend(_profit_losses_to_transactions(profit_losses))
+            transactions.extend(_profit_losses_to_transactions(profit_losses, api))
 
             account_balance = api.account_balance(account=stock_account)
             if account_balance.errmsg:
@@ -111,13 +119,13 @@ def load_shioaji_data(
             api.logout()
 
 
-def _position_to_holding(position: Any) -> Holding:
+def _position_to_holding(position: Any, name: str) -> Holding:
     return Holding(
         id=f"shioaji-stock-{position.code}",
         institution=Institution.SINOPAC_SECURITIES,
         account_name="永豐大戶投",
         symbol=position.code,
-        name=position.code,
+        name=name,
         asset_type=AssetType.STOCK,
         currency=Currency.TWD,
         quantity=float(position.quantity),
@@ -144,6 +152,7 @@ def _balance_to_holding(balance: float) -> Holding:
 def _position_details_to_transactions(
     positions: list[Any],
     details: list[Any],
+    api: Any,
 ) -> list[Transaction]:
     shares_by_code = {
         str(position.code): float(position.quantity)
@@ -171,7 +180,7 @@ def _position_details_to_transactions(
                 institution=Institution.SINOPAC_SECURITIES,
                 account_name="SinoPac Securities",
                 symbol=code,
-                name=code,
+                name=_stock_name(api, code),
                 transaction_type=TransactionType.BUY,
                 currency=Currency.TWD,
                 quantity=quantity,
@@ -185,7 +194,7 @@ def _position_details_to_transactions(
     return transactions
 
 
-def _profit_losses_to_transactions(items: list[Any]) -> list[Transaction]:
+def _profit_losses_to_transactions(items: list[Any], api: Any) -> list[Transaction]:
     transactions: list[Transaction] = []
     for item in items:
         quantity = float(getattr(item, "quantity", 0))
@@ -205,7 +214,7 @@ def _profit_losses_to_transactions(items: list[Any]) -> list[Transaction]:
                 institution=Institution.SINOPAC_SECURITIES,
                 account_name="SinoPac Securities",
                 symbol=code,
-                name=code,
+                name=_stock_name(api, code),
                 transaction_type=TransactionType.SELL,
                 currency=Currency.TWD,
                 quantity=quantity,
@@ -217,6 +226,15 @@ def _profit_losses_to_transactions(items: list[Any]) -> list[Transaction]:
             )
         )
     return transactions
+
+
+def _stock_name(api: Any, code: str) -> str:
+    try:
+        contract = api.Contracts.Stocks[code]
+        name = str(getattr(contract, "name", "")).strip()
+        return name or code
+    except (AttributeError, KeyError, TypeError):
+        return code
 
 
 def _stable_id(*parts: object) -> str:

@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -52,6 +53,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -264,17 +266,31 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 state = pagerState,
                 modifier = Modifier.weight(1f),
             ) { page ->
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = 18.dp,
-                        top = 12.dp,
-                        end = 18.dp,
-                        bottom = 36.dp,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
-                ) {
-                    when (AppPage.entries[page]) {
+                val pageType = AppPage.entries[page]
+                val listState = rememberLazyListState()
+                val regularHoldings = remember(state.holdings) {
+                    state.holdings
+                        .filterNot(Holding::isCurrencyHolding)
+                        .sortedWith(compareBy(Holding::institution, Holding::symbol))
+                }
+                val currencyHoldings = remember(state.holdings) {
+                    state.holdings
+                        .filter(Holding::isCurrencyHolding)
+                        .sortedBy(Holding::symbol)
+                }
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            start = 18.dp,
+                            top = 12.dp,
+                            end = 18.dp,
+                            bottom = 36.dp,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(20.dp),
+                    ) {
+                    when (pageType) {
                         AppPage.OVERVIEW -> {
                             item {
                                 TotalAssetOverviewCard(
@@ -352,7 +368,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                     ),
                                 )
                             }
-                            items(state.holdings, key = Holding::id) { holding ->
+                            items(regularHoldings, key = Holding::id) { holding ->
                                 HoldingRow(
                                     holding = holding,
                                     marketSummary = state.marketSummaries[
@@ -382,6 +398,23 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                         }
                                     },
                                 )
+                            }
+                            if (currencyHoldings.isNotEmpty()) {
+                                item(key = "currency-divider") {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                        color = MaterialTheme.colorScheme.outline,
+                                    )
+                                }
+                                items(currencyHoldings, key = Holding::id) { holding ->
+                                    HoldingRow(
+                                        holding = holding,
+                                        marketSummary = null,
+                                        displayCurrency = displayCurrency,
+                                        usdToTwd = state.rates.usdToTwd,
+                                        onShowChart = {},
+                                    )
+                                }
                             }
                         }
                         AppPage.TRANSACTIONS -> {
@@ -427,6 +460,29 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                     },
                                 )
                             }
+                        }
+                    }
+                }
+                    if (listState.isScrollInProgress) {
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 6.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.68f),
+                        ) {
+                            Text(
+                                text = scrollHint(
+                                    page = pageType,
+                                    firstVisibleIndex = listState.firstVisibleItemIndex,
+                                    regularHoldings = regularHoldings,
+                                    currencyHoldings = currencyHoldings,
+                                ),
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.inverseOnSurface,
+                                maxLines = 1,
+                            )
                         }
                     }
                 }
@@ -977,12 +1033,6 @@ private fun PerformanceCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                "PERFORMANCE",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.secondary,
-            )
-            Spacer(Modifier.height(4.dp))
             SectionHeader(uiText("投資績效", "Performance"), performance.returnRate.asPercent())
             Spacer(Modifier.height(18.dp))
             Row(
@@ -1203,12 +1253,6 @@ private fun ServerSyncCard(
             ) {
                 Column {
                     Text(
-                        "PC SERVER",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.secondary,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
                         uiText("電腦資產伺服器", "PC asset server"),
                         style = MaterialTheme.typography.titleMedium,
                     )
@@ -1312,12 +1356,6 @@ private fun AutoSyncCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "AUTO SYNC",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Spacer(Modifier.height(4.dp))
                     Text(
                         uiText("資料夾自動同步", "Folder auto-sync"),
                         style = MaterialTheme.typography.titleMedium,
@@ -1737,8 +1775,10 @@ private fun HoldingRow(
                 Spacer(Modifier.height(5.dp))
                 Text(
                     uiText(
-                        "點擊查看 K 線與趨勢 · ${marketSummary?.source ?: "行情載入中"}",
-                        "Tap for chart and trend · ${marketSummary?.source ?: "Loading quotes"}",
+                        "點擊查看 K 線 · ${marketSummary?.source ?: "行情載入中"}",
+                        "Tap for candlestick chart · ${
+                            marketSummary?.source ?: "Loading quotes"
+                        }",
                     ),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.secondary,
@@ -1893,6 +1933,27 @@ private fun currencyMultiplier(
 }
 private fun Double.asQuantity(): String =
     if (this % 1.0 == 0.0) "%,.0f".format(this) else "%,.2f".format(this)
+
+private fun Holding.isCurrencyHolding(): Boolean = symbol == "USD" || symbol == "TWD"
+
+@Composable
+private fun scrollHint(
+    page: AppPage,
+    firstVisibleIndex: Int,
+    regularHoldings: List<Holding>,
+    currencyHoldings: List<Holding>,
+): String {
+    if (page != AppPage.HOLDINGS || firstVisibleIndex == 0) {
+        return page.label(LocalUiLanguage.current)
+    }
+    val holdingIndex = firstVisibleIndex - 1
+    if (holdingIndex in regularHoldings.indices) {
+        return regularHoldings[holdingIndex].symbol
+    }
+    val currencyIndex = firstVisibleIndex - regularHoldings.size - 2
+    return currencyHoldings.getOrNull(currencyIndex)?.symbol
+        ?: page.label(LocalUiLanguage.current)
+}
 
 private val Holding.returnRate: Double
     get() = if (cost == 0.0) 0.0 else unrealizedProfit / cost

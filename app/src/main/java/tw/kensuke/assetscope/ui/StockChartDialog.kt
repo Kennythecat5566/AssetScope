@@ -3,6 +3,8 @@ package tw.kensuke.assetscope.ui
 import android.graphics.Paint
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +36,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,6 +47,7 @@ import tw.kensuke.assetscope.domain.model.PriceCandle
 import tw.kensuke.assetscope.domain.model.PriceHistory
 import java.text.NumberFormat
 import java.util.Locale
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private enum class ChartPeriod(val days: Int) {
@@ -65,6 +69,9 @@ fun StockChartDialog(
     onPeriodChange: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val selectedPeriod = ChartPeriod.entries.firstOrNull { it.days == selectedDays }
+        ?: ChartPeriod.MONTHLY
+    val selectedIndex = ChartPeriod.entries.indexOf(selectedPeriod)
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -72,7 +79,43 @@ fun StockChartDialog(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 4.dp,
         ) {
-            Column(modifier = Modifier.padding(22.dp)) {
+            Column(
+                modifier = Modifier
+                    .padding(22.dp)
+                    .pointerInput(selectedDays) {
+                        awaitEachGesture {
+                            awaitFirstDown(
+                                requireUnconsumed = false,
+                                pass = PointerEventPass.Initial,
+                            )
+                            var horizontalDrag = 0f
+                            var multiTouch = false
+                            var pointerPressed: Boolean
+                            do {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                multiTouch = multiTouch || event.changes.size > 1
+                                event.changes.firstOrNull()?.let { change ->
+                                    horizontalDrag +=
+                                        change.position.x - change.previousPosition.x
+                                }
+                                pointerPressed = event.changes.any { it.pressed }
+                            } while (pointerPressed)
+
+                            if (!multiTouch && abs(horizontalDrag) >= 80.dp.toPx()) {
+                                val nextIndex = if (horizontalDrag < 0) {
+                                    (selectedIndex + 1).coerceAtMost(
+                                        ChartPeriod.entries.lastIndex,
+                                    )
+                                } else {
+                                    (selectedIndex - 1).coerceAtLeast(0)
+                                }
+                                if (nextIndex != selectedIndex) {
+                                    onPeriodChange(ChartPeriod.entries[nextIndex].days)
+                                }
+                            }
+                        }
+                    },
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -87,7 +130,7 @@ fun StockChartDialog(
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
-                            "${uiText("日線", "Daily")} · ${
+                            "${selectedPeriod.label()} · ${
                                 history?.source ?: uiText("載入中", "Loading")
                             }",
                             style = MaterialTheme.typography.labelSmall,
@@ -196,14 +239,22 @@ private fun ChartPeriodButton(
     ) {
         Text(
             when (period) {
-                ChartPeriod.DAILY -> uiText("日線", "1M")
-                ChartPeriod.MONTHLY -> uiText("月線", "3M")
-                ChartPeriod.QUARTERLY -> uiText("季線", "6M")
-                ChartPeriod.YEARLY -> uiText("年線", "1Y")
+                ChartPeriod.DAILY -> uiText("日線", "1 month")
+                ChartPeriod.MONTHLY -> uiText("月線", "3 months")
+                ChartPeriod.QUARTERLY -> uiText("季線", "6 months")
+                ChartPeriod.YEARLY -> uiText("年線", "1 year")
             },
             style = MaterialTheme.typography.labelSmall,
         )
     }
+}
+
+@Composable
+private fun ChartPeriod.label(): String = when (this) {
+    ChartPeriod.DAILY -> uiText("日線", "1 month")
+    ChartPeriod.MONTHLY -> uiText("月線", "3 months")
+    ChartPeriod.QUARTERLY -> uiText("季線", "6 months")
+    ChartPeriod.YEARLY -> uiText("年線", "1 year")
 }
 
 @Composable
