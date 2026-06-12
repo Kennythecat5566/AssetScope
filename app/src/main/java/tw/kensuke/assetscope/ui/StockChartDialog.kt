@@ -32,11 +32,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import tw.kensuke.assetscope.domain.model.Currency
@@ -46,11 +45,6 @@ import tw.kensuke.assetscope.domain.model.PriceHistory
 import java.text.NumberFormat
 import java.util.Locale
 import kotlin.math.roundToInt
-
-private enum class ChartMode {
-    CANDLE,
-    TREND,
-}
 
 private enum class ChartPeriod(val days: Int) {
     DAILY(30),
@@ -71,8 +65,6 @@ fun StockChartDialog(
     onPeriodChange: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var mode by remember { mutableStateOf(ChartMode.CANDLE) }
-
     Dialog(onDismissRequest = onDismiss) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
@@ -91,6 +83,8 @@ fun StockChartDialog(
                             "${holding.symbol} · ${holding.name}",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             "${uiText("日線", "Daily")} · ${
@@ -134,25 +128,16 @@ fun StockChartDialog(
                             multiplier = multiplier,
                         )
                         Spacer(Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                            ChartModeButton(
-                                text = uiText("K 線", "Candles"),
-                                selected = mode == ChartMode.CANDLE,
-                                onClick = { mode = ChartMode.CANDLE },
-                            )
-                            ChartModeButton(
-                                text = uiText("趨勢", "Trend"),
-                                selected = mode == ChartMode.TREND,
-                                onClick = { mode = ChartMode.TREND },
-                            )
-                        }
-                        Spacer(Modifier.height(10.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
                             ChartPeriod.entries.forEach { period ->
                                 ChartPeriodButton(
                                     period = period,
                                     selected = selectedDays == period.days,
                                     onClick = { onPeriodChange(period.days) },
+                                    modifier = Modifier.weight(1f),
                                 )
                             }
                         }
@@ -160,7 +145,6 @@ fun StockChartDialog(
                         PriceChart(
                             candles = history.candles,
                             averageCost = holding.averageCost,
-                            mode = mode,
                             currency = displayCurrency,
                             multiplier = multiplier,
                             modifier = Modifier
@@ -188,9 +172,11 @@ private fun ChartPeriodButton(
     period: ChartPeriod,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Button(
         onClick = onClick,
+        modifier = modifier,
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
             horizontal = 10.dp,
             vertical = 4.dp,
@@ -235,18 +221,38 @@ private fun HistorySummary(
     val low = candles.minOf(PriceCandle::low)
     val color = if (change >= 0) Color(0xFF9A5D50) else Color(0xFF627066)
 
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        ChartMetric(uiText("最新", "Latest"), (last.close * multiplier).asPrice(displayCurrency))
-        ChartMetric(
-            uiText("期間", "Period"),
-            "${if (change >= 0) "+" else ""}${"%.1f".format(change * 100)}%",
-            color,
-        )
-        ChartMetric(uiText("最高", "High"), (high * multiplier).asPrice(displayCurrency))
-        ChartMetric(uiText("最低", "Low"), (low * multiplier).asPrice(displayCurrency))
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            ChartMetric(
+                uiText("最新", "Latest"),
+                (last.close * multiplier).asPrice(displayCurrency),
+                modifier = Modifier.weight(1f),
+            )
+            ChartMetric(
+                uiText("期間", "Period"),
+                "${if (change >= 0) "+" else ""}${"%.1f".format(change * 100)}%",
+                color,
+                Modifier.weight(1f),
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            ChartMetric(
+                uiText("最高", "High"),
+                (high * multiplier).asPrice(displayCurrency),
+                modifier = Modifier.weight(1f),
+            )
+            ChartMetric(
+                uiText("最低", "Low"),
+                (low * multiplier).asPrice(displayCurrency),
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
     Spacer(Modifier.height(12.dp))
     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -261,35 +267,32 @@ private fun HistorySummary(
 }
 
 @Composable
-private fun ChartMetric(label: String, value: String, color: Color = Color.Unspecified) {
-    Column {
+private fun ChartMetric(
+    label: String,
+    value: String,
+    color: Color = Color.Unspecified,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .background(
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                RoundedCornerShape(12.dp),
+            )
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+    ) {
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(value, fontWeight = FontWeight.SemiBold, color = color)
-    }
-}
-
-@Composable
-private fun ChartModeButton(text: String, selected: Boolean, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        colors = ButtonDefaults.buttonColors(
-            containerColor = if (selected) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant
-            },
-            contentColor = if (selected) {
-                MaterialTheme.colorScheme.onPrimary
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-        ),
-    ) {
-        Text(text)
+        Text(
+            value,
+            fontWeight = FontWeight.SemiBold,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -297,18 +300,16 @@ private fun ChartModeButton(text: String, selected: Boolean, onClick: () -> Unit
 private fun PriceChart(
     candles: List<PriceCandle>,
     averageCost: Double,
-    mode: ChartMode,
     currency: Currency,
     multiplier: Double,
     modifier: Modifier = Modifier,
 ) {
-    var zoom by remember(candles, mode) { mutableFloatStateOf(1f) }
-    var panFraction by remember(candles, mode) { mutableFloatStateOf(1f) }
+    var zoom by remember(candles) { mutableFloatStateOf(1f) }
+    var panFraction by remember(candles) { mutableFloatStateOf(1f) }
     val upColor = Color(0xFFB36B59)
     val downColor = Color(0xFF687866)
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val trendColor = MaterialTheme.colorScheme.primary
     val averageColor = MaterialTheme.colorScheme.secondary
 
     Canvas(
@@ -317,7 +318,7 @@ private fun PriceChart(
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
                 RoundedCornerShape(14.dp),
             )
-            .pointerInput(candles, mode) {
+            .pointerInput(candles) {
                 detectTransformGestures { _, pan, gestureZoom, _ ->
                     zoom = (zoom * gestureZoom).coerceIn(1f, 15f)
                     panFraction = (panFraction - pan.x / 700f).coerceIn(0f, 1f)
@@ -330,7 +331,7 @@ private fun PriceChart(
         val start = (maxStart * panFraction).roundToInt().coerceIn(0, maxStart)
         val visible = candles.subList(start, start + visibleCount)
         val left = 12.dp.toPx()
-        val right = 58.dp.toPx()
+        val right = 86.dp.toPx()
         val top = 16.dp.toPx()
         val bottom = 34.dp.toPx()
         val chartWidth = size.width - left - right
@@ -380,33 +381,23 @@ private fun PriceChart(
         )
 
         val step = chartWidth / visible.size
-        if (mode == ChartMode.CANDLE) {
-            val bodyWidth = (step * 0.58f).coerceAtLeast(2.dp.toPx())
-            visible.forEachIndexed { index, candle ->
-                val x = left + step * (index + 0.5f)
-                val color = if (candle.close >= candle.open) upColor else downColor
-                drawLine(
-                    color = color,
-                    start = Offset(x, y(candle.high * multiplier)),
-                    end = Offset(x, y(candle.low * multiplier)),
-                    strokeWidth = 1.dp.toPx(),
-                )
-                val bodyTop = minOf(y(candle.open * multiplier), y(candle.close * multiplier))
-                val bodyBottom = maxOf(y(candle.open * multiplier), y(candle.close * multiplier))
-                drawRect(
-                    color = color,
-                    topLeft = Offset(x - bodyWidth / 2, bodyTop),
-                    size = Size(bodyWidth, (bodyBottom - bodyTop).coerceAtLeast(1.5.dp.toPx())),
-                )
-            }
-        } else {
-            val path = Path()
-            visible.forEachIndexed { index, candle ->
-                val x = left + chartWidth * index / visible.lastIndex
-                val pointY = y(candle.close * multiplier)
-                if (index == 0) path.moveTo(x, pointY) else path.lineTo(x, pointY)
-            }
-            drawPath(path, color = trendColor, style = Stroke(width = 2.5.dp.toPx()))
+        val bodyWidth = (step * 0.58f).coerceAtLeast(2.dp.toPx())
+        visible.forEachIndexed { index, candle ->
+            val x = left + step * (index + 0.5f)
+            val color = if (candle.close >= candle.open) upColor else downColor
+            drawLine(
+                color = color,
+                start = Offset(x, y(candle.high * multiplier)),
+                end = Offset(x, y(candle.low * multiplier)),
+                strokeWidth = 1.dp.toPx(),
+            )
+            val bodyTop = minOf(y(candle.open * multiplier), y(candle.close * multiplier))
+            val bodyBottom = maxOf(y(candle.open * multiplier), y(candle.close * multiplier))
+            drawRect(
+                color = color,
+                topLeft = Offset(x - bodyWidth / 2, bodyTop),
+                size = Size(bodyWidth, (bodyBottom - bodyTop).coerceAtLeast(1.5.dp.toPx())),
+            )
         }
 
         listOf(0, visible.lastIndex / 2, visible.lastIndex).distinct().forEach { index ->
@@ -434,12 +425,13 @@ private fun conversionMultiplier(
 }
 
 private fun axisMoney(value: Double, currency: Currency): String = when (currency) {
-    Currency.TWD -> "NT$${NumberFormat.getNumberInstance(Locale.TAIWAN).format(value)}"
+    Currency.TWD -> "NT$${"%,.0f".format(value)}"
     Currency.USD -> "US$${"%,.2f".format(value)}"
 }
 
 private val twdPriceFormatter = NumberFormat.getCurrencyInstance(Locale.TAIWAN).apply {
-    maximumFractionDigits = 2
+    minimumFractionDigits = 0
+    maximumFractionDigits = 0
 }
 
 private fun Double.asPrice(currency: Currency): String = when (currency) {
