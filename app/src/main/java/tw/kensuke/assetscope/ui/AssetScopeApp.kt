@@ -102,6 +102,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     var chartHistory by remember { mutableStateOf<PriceHistory?>(null) }
     var chartLoading by remember { mutableStateOf(false) }
     var chartError by remember { mutableStateOf<String?>(null) }
+    var checkingUpdate by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val csvLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -128,9 +129,11 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     }
     LaunchedEffect(Unit) {
         if (!BuildConfig.DEBUG) {
+            checkingUpdate = true
             runCatching { updateManager.checkForUpdate() }
                 .onSuccess { availableUpdate = it }
                 .onFailure { updateMessage = it.message }
+            checkingUpdate = false
         }
     }
     LaunchedEffect(updateMessage) {
@@ -183,6 +186,33 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                     }
                 },
                 actions = {
+                    if (!BuildConfig.DEBUG) {
+                        IconButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    checkingUpdate = true
+                                    runCatching { updateManager.checkForUpdate() }
+                                        .onSuccess { update ->
+                                            availableUpdate = update
+                                            if (update == null) {
+                                                updateMessage =
+                                                    "目前版本 ${BuildConfig.VERSION_NAME} 已是最新版"
+                                            }
+                                        }
+                                        .onFailure {
+                                            updateMessage = it.message ?: "無法檢查更新"
+                                        }
+                                    checkingUpdate = false
+                                }
+                            },
+                            enabled = !checkingUpdate,
+                        ) {
+                            Icon(
+                                Icons.Outlined.SystemUpdate,
+                                contentDescription = "檢查 App 更新",
+                            )
+                        }
+                    }
                     IconButton(onClick = viewModel::resetSampleData) {
                         Icon(Icons.Outlined.Refresh, contentDescription = "還原範例資料")
                     }
@@ -207,6 +237,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 item {
                     AppUpdateCard(
                         update = update,
+                        currentVersion = BuildConfig.VERSION_NAME,
                         isDownloading = updateDownloadId != null,
                         onDownload = {
                             coroutineScope.launch {
@@ -308,6 +339,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
 @Composable
 private fun AppUpdateCard(
     update: AppUpdate,
+    currentVersion: String,
     isDownloading: Boolean,
     onDownload: () -> Unit,
 ) {
@@ -336,6 +368,11 @@ private fun AppUpdateCard(
                     Text(
                         "新版本 ${update.versionName}",
                         style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        "目前 $currentVersion → 最新 ${update.versionName}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Icon(
