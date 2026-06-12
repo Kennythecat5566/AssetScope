@@ -31,4 +31,11 @@ def test_portfolio_requires_token(tmp_path: Path) -> None:
     )
     assert history.status_code == 200
     assert len(history.json()["points"]) == 1
+    paper = client.get(
+        "/api/v1/paper-trading",
+        headers={"Authorization": "Bearer a-long-enough-test-token"},
+    )
+    assert paper.status_code == 200
+    assert paper.json()["paper_only"] is True
+    assert len(paper.json()["bots"]) == 3
     app.dependency_overrides.clear()

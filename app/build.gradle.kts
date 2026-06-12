@@ -21,8 +21,8 @@ android {
         applicationId = "tw.kensuke.assetscope"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "0.6.2"
+        versionCode = 18
+        versionName = "0.7.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

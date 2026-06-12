@@ -16,6 +16,11 @@ import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PortfolioHistoryPoint
 import tw.kensuke.assetscope.domain.model.PriceCandle
 import tw.kensuke.assetscope.domain.model.PriceHistory
+import tw.kensuke.assetscope.domain.model.PaperBot
+import tw.kensuke.assetscope.domain.model.PaperBotPosition
+import tw.kensuke.assetscope.domain.model.PaperBotTrade
+import tw.kensuke.assetscope.domain.model.PaperBotEquityPoint
+import tw.kensuke.assetscope.domain.model.PaperTradingDashboard
 import tw.kensuke.assetscope.domain.model.Transaction
 import tw.kensuke.assetscope.domain.model.TransactionType
 import java.net.HttpURLConnection
@@ -120,6 +125,29 @@ class PortfolioApiClient {
                     }
                 },
             )
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    fun fetchPaperTrading(
+        baseUrl: String,
+        apiToken: String,
+    ): PaperTradingDashboard {
+        val normalizedUrl = validateAndNormalizeBaseUrl(baseUrl)
+        val token = normalizeApiToken(apiToken)
+        val connection = URI("$normalizedUrl/api/v1/paper-trading")
+            .toURL().openConnection() as HttpURLConnection
+        return try {
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 90_000
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            val status = connection.responseCode
+            val body = (if (status in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            require(status in 200..299) { errorMessage(status, body) }
+            JSONObject(body).toPaperTrading()
         } finally {
             connection.disconnect()
         }
@@ -292,6 +320,71 @@ class PortfolioApiClient {
             changeRate = getDouble("change_rate"),
             closes = List(closeArray.length()) { index -> closeArray.getDouble(index) },
             source = getString("source"),
+        )
+    }
+
+    private fun JSONObject.toPaperTrading(): PaperTradingDashboard {
+        val botArray = getJSONArray("bots")
+        return PaperTradingDashboard(
+            generatedAt = getString("generated_at"),
+            paperOnly = getBoolean("paper_only"),
+            bots = List(botArray.length()) { index ->
+                val bot = botArray.getJSONObject(index)
+                val positions = bot.getJSONArray("positions")
+                val trades = bot.getJSONArray("recent_trades")
+                val equity = bot.getJSONArray("equity_history")
+                PaperBot(
+                    id = bot.getString("id"),
+                    name = bot.getString("name"),
+                    strategy = bot.getString("strategy"),
+                    paperOnly = bot.getBoolean("paper_only"),
+                    initialCashTwd = bot.getDouble("initial_cash_twd"),
+                    cashTwd = bot.getDouble("cash_twd"),
+                    netValueTwd = bot.getDouble("net_value_twd"),
+                    totalReturnTwd = bot.getDouble("total_return_twd"),
+                    returnRate = bot.getDouble("return_rate"),
+                    tradeCount = bot.getInt("trade_count"),
+                    lastRunAt = bot.optString("last_run_at")
+                        .takeIf { it.isNotBlank() && it != "null" },
+                    positions = List(positions.length()) { positionIndex ->
+                        positions.getJSONObject(positionIndex).let {
+                            PaperBotPosition(
+                                symbol = it.getString("symbol"),
+                                name = it.getString("name"),
+                                quantity = it.getDouble("quantity"),
+                                averageCostTwd = it.getDouble("average_cost_twd"),
+                                marketPriceTwd = it.getDouble("market_price_twd"),
+                                marketValueTwd = it.getDouble("market_value_twd"),
+                                unrealizedProfitTwd = it.getDouble("unrealized_profit_twd"),
+                            )
+                        }
+                    },
+                    recentTrades = List(trades.length()) { tradeIndex ->
+                        trades.getJSONObject(tradeIndex).let {
+                            PaperBotTrade(
+                                id = it.getString("id"),
+                                timestamp = it.getString("timestamp"),
+                                botId = it.getString("bot_id"),
+                                symbol = it.getString("symbol"),
+                                name = it.getString("name"),
+                                side = it.getString("side"),
+                                quantity = it.getDouble("quantity"),
+                                priceTwd = it.getDouble("price_twd"),
+                                amountTwd = it.getDouble("amount_twd"),
+                                reason = it.getString("reason"),
+                            )
+                        }
+                    },
+                    equityHistory = List(equity.length()) { equityIndex ->
+                        equity.getJSONObject(equityIndex).let {
+                            PaperBotEquityPoint(
+                                timestamp = it.getString("timestamp"),
+                                netValueTwd = it.getDouble("net_value_twd"),
+                            )
+                        }
+                    },
+                )
+            },
         )
     }
 

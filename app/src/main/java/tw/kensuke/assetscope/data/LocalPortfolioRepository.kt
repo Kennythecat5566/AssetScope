@@ -22,6 +22,7 @@ import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PriceHistory
+import tw.kensuke.assetscope.domain.model.PaperTradingDashboard
 import tw.kensuke.assetscope.domain.model.Transaction
 import tw.kensuke.assetscope.domain.model.TransactionType
 import tw.kensuke.assetscope.domain.model.UiLanguage
@@ -42,6 +43,7 @@ class LocalPortfolioRepository(
     private val mutableInsights = MutableStateFlow(loadInsights())
     private val mutableMarketSummaries = MutableStateFlow(loadMarketSummaries())
     private val mutableAppSettings = MutableStateFlow(loadAppSettings())
+    private val mutablePaperTrading = MutableStateFlow<PaperTradingDashboard?>(null)
     private val preferenceListener =
         android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             when (key) {
@@ -73,6 +75,7 @@ class LocalPortfolioRepository(
     override val insights: StateFlow<PortfolioInsights> = mutableInsights
     override val marketSummaries: StateFlow<Map<String, MarketSummary>> = mutableMarketSummaries
     override val appSettings: StateFlow<AppSettings> = mutableAppSettings
+    override val paperTrading: StateFlow<PaperTradingDashboard?> = mutablePaperTrading
 
     init {
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
@@ -138,6 +141,7 @@ class LocalPortfolioRepository(
         mutableServerUrl.value = normalizedUrl
         applyRemotePortfolio(remote)
         refreshMarketSummariesSafely(normalizedUrl, normalizedToken)
+        refreshPaperTradingSafely(normalizedUrl, normalizedToken)
         ServerSyncWorker.schedule(appContext)
         ServerSyncResult(
             importedCount = remote.holdings.size,
@@ -159,6 +163,7 @@ class LocalPortfolioRepository(
 
         applyRemotePortfolio(remote)
         refreshMarketSummariesSafely(baseUrl, token)
+        refreshPaperTradingSafely(baseUrl, token)
         ServerSyncResult(
             importedCount = remote.holdings.size,
             sourceCount = remote.sourceCount,
@@ -202,6 +207,14 @@ class LocalPortfolioRepository(
         refreshMarketSummariesSafely(baseUrl, token)
     }
 
+    override suspend fun refreshPaperTrading() = withContext(Dispatchers.IO) {
+        val baseUrl = preferences.getString(KEY_SERVER_URL, null)
+            ?: error("請先連接電腦資產伺服器")
+        val token = preferences.getString(KEY_SERVER_TOKEN, null)
+            ?: error("尚未設定 API Token")
+        mutablePaperTrading.value = PortfolioApiClient().fetchPaperTrading(baseUrl, token)
+    }
+
     override suspend fun setDisplayCurrency(currency: Currency) {
         preferences.edit().putString(KEY_DISPLAY_CURRENCY, currency.name).apply()
         mutableAppSettings.value = mutableAppSettings.value.copy(displayCurrency = currency)
@@ -222,6 +235,12 @@ class LocalPortfolioRepository(
         }.getOrElse { return }
         mutableMarketSummaries.value = summaries.associateBy(MarketSummary::key)
         saveMarketSummaries(summaries)
+    }
+
+    private fun refreshPaperTradingSafely(baseUrl: String, token: String) {
+        mutablePaperTrading.value = runCatching {
+            PortfolioApiClient().fetchPaperTrading(baseUrl, token)
+        }.getOrNull()
     }
 
     private fun applyRemotePortfolio(remote: RemotePortfolio) {

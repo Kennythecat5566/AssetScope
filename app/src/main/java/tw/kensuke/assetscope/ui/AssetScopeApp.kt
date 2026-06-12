@@ -94,6 +94,8 @@ import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.Institution
 import tw.kensuke.assetscope.domain.model.MarketSummary
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
+import tw.kensuke.assetscope.domain.model.PaperBot
+import tw.kensuke.assetscope.domain.model.PaperTradingDashboard
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PriceHistory
 import tw.kensuke.assetscope.domain.model.PortfolioSummary
@@ -477,6 +479,16 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                         usdToTwd = state.rates.usdToTwd,
                                     )
                                 }
+                            }
+                        }
+                        AppPage.ROBOTS -> {
+                            item(key = "robots-dashboard") {
+                                PaperTradingPage(
+                                    dashboard = state.paperTrading,
+                                    displayCurrency = displayCurrency,
+                                    usdToTwd = state.rates.usdToTwd,
+                                    onRefresh = viewModel::refreshPaperTrading,
+                                )
                             }
                         }
                         AppPage.SYNC -> {
@@ -1933,6 +1945,153 @@ private fun ImportCard(onImport: () -> Unit) {
 }
 
 @Composable
+private fun PaperTradingPage(
+    dashboard: PaperTradingDashboard?,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+    onRefresh: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    uiText("AI 模擬交易實驗室", "AI paper trading lab"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    uiText(
+                        "永久隔離實盤，只記錄虛擬成交與績效",
+                        "Permanently isolated from live trading",
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onRefresh) {
+                Icon(Icons.Outlined.Refresh, contentDescription = uiText("更新", "Refresh"))
+            }
+        }
+        if (dashboard == null) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            ) {
+                Text(
+                    uiText(
+                        "連接電腦伺服器後即可啟動三個模擬交易機器人。",
+                        "Connect to the PC server to start the three paper-trading bots.",
+                    ),
+                    modifier = Modifier.padding(20.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            dashboard.bots.forEach { bot ->
+                PaperBotCard(bot, displayCurrency, usdToTwd)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PaperBotCard(
+    bot: PaperBot,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+) {
+    val multiplier = if (displayCurrency == Currency.TWD) 1.0 else 1 / usdToTwd
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.padding(18.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(bot.name, style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        bot.strategy,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    bot.returnRate.asPercent(),
+                    color = if (bot.returnRate >= 0) profitColor else lossColor,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Metric(
+                    uiText("淨值", "Net value"),
+                    (bot.netValueTwd * multiplier).asMoney(displayCurrency),
+                )
+                Metric(
+                    uiText("現金", "Cash"),
+                    (bot.cashTwd * multiplier).asMoney(displayCurrency),
+                )
+                Metric(uiText("交易", "Trades"), bot.tradeCount.toString())
+            }
+            if (bot.positions.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    uiText("虛擬持倉", "Paper positions"),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                bot.positions.take(5).forEach { position ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 7.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text("${position.symbol} · ${position.name}", modifier = Modifier.weight(1f))
+                        Text(
+                            (position.marketValueTwd * multiplier).asMoney(displayCurrency),
+                            fontWeight = FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+            if (bot.recentTrades.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    uiText("最近交易", "Recent trades"),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                bot.recentTrades.take(3).forEach { trade ->
+                    Text(
+                        "${trade.side} ${trade.symbol} · ${
+                            (trade.amountTwd * multiplier).asMoney(displayCurrency)
+                        }",
+                        modifier = Modifier.padding(top = 5.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (trade.side == "BUY") lossColor else profitColor,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun SectionHeader(title: String, trailing: String) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -2064,6 +2223,7 @@ private enum class AppPage {
     HOLDINGS,
     TRANSACTIONS,
     EXPENSES,
+    ROBOTS,
     SYNC;
 
     fun label(language: UiLanguage): String = when (this) {
@@ -2071,6 +2231,7 @@ private enum class AppPage {
         HOLDINGS -> if (language == UiLanguage.EN) "Holdings" else "持股"
         TRANSACTIONS -> if (language == UiLanguage.EN) "Trades" else "交易"
         EXPENSES -> if (language == UiLanguage.EN) "Expenses" else "消費"
+        ROBOTS -> if (language == UiLanguage.EN) "Bots" else "機器人"
         SYNC -> if (language == UiLanguage.EN) "Sync" else "同步"
     }
 }

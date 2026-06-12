@@ -276,6 +276,30 @@ the accumulated timeline from:
 GET /api/v1/portfolio/history?days=365
 ```
 
+### AI 模擬交易實驗室
+
+伺服器會在背景執行三個完全隔離於券商下單的策略代理：
+
+- 激進型：短線動能、高週轉與較高資金配置。
+- 穩健型：趨勢確認、較低部位與較少交易。
+- 無限制型：在虛擬帳戶內不限制集中度與週轉率。
+
+每個代理預設使用獨立的 `NT$1,000,000` 虛擬資金。持倉、交易紀錄與每日淨值
+保存在 `server/data/paper-trading.json`。此模組不包含 Shioaji 下單呼叫，也沒有
+切換為實盤的設定。
+
+```text
+GET /api/v1/paper-trading
+```
+
+可在 `.env` 調整：
+
+```dotenv
+ASSETSCOPE_PAPER_TRADING_ENABLED=true
+ASSETSCOPE_PAPER_TRADING_INTERVAL_MINUTES=60
+ASSETSCOPE_PAPER_TRADING_INITIAL_CASH_TWD=1000000
+```
+
 History starts accumulating after this server version is installed. Snapshots
 and exchange-rate caches are stored under `data/cache`, which is excluded from
 Git.

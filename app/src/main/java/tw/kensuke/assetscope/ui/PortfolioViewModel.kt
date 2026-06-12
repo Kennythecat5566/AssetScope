@@ -22,6 +22,7 @@ import tw.kensuke.assetscope.domain.model.PortfolioSummary
 import tw.kensuke.assetscope.domain.model.PerformanceSummary
 import tw.kensuke.assetscope.domain.model.Transaction
 import tw.kensuke.assetscope.domain.model.UiLanguage
+import tw.kensuke.assetscope.domain.model.PaperTradingDashboard
 
 data class PortfolioUiState(
     val holdings: List<Holding> = emptyList(),
@@ -34,6 +35,7 @@ data class PortfolioUiState(
     val performance: PerformanceSummary = PerformanceSummary(),
     val marketSummaries: Map<String, MarketSummary> = emptyMap(),
     val appSettings: AppSettings = AppSettings(),
+    val paperTrading: PaperTradingDashboard? = null,
     val message: String? = null,
 )
 
@@ -47,7 +49,8 @@ class PortfolioViewModel(
         repository.exchangeRates,
         repository.insights,
         repository.marketSummaries,
-    ) { holdings, rates, insights, marketSummaries ->
+        repository.paperTrading,
+    ) { holdings, rates, insights, marketSummaries, paperTrading ->
         PortfolioUiState(
             holdings = holdings,
             rates = rates,
@@ -56,6 +59,7 @@ class PortfolioViewModel(
             expenses = insights.expenses,
             performance = insights.performance,
             marketSummaries = marketSummaries,
+            paperTrading = paperTrading,
         )
     }
 
@@ -172,6 +176,20 @@ class PortfolioViewModel(
 
     fun clearMessage() {
         message.value = null
+    }
+
+    fun refreshPaperTrading() {
+        viewModelScope.launch {
+            message.value = runCatching {
+                repository.refreshPaperTrading()
+                localized("模擬交易資料已更新", "Paper trading refreshed")
+            }.getOrElse { error ->
+                error.message ?: localized(
+                    "無法更新模擬交易資料",
+                    "Could not refresh paper trading",
+                )
+            }
+        }
     }
 
     fun setDisplayCurrency(currency: Currency) {

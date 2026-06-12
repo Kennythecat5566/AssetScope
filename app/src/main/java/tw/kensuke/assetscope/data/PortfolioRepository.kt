@@ -9,6 +9,7 @@ import tw.kensuke.assetscope.domain.model.Holding
 import tw.kensuke.assetscope.domain.model.MarketSummary
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
+import tw.kensuke.assetscope.domain.model.PaperTradingDashboard
 import tw.kensuke.assetscope.domain.model.PriceHistory
 import tw.kensuke.assetscope.domain.model.UiLanguage
 
@@ -20,6 +21,7 @@ interface PortfolioRepository {
     val insights: StateFlow<PortfolioInsights>
     val marketSummaries: StateFlow<Map<String, MarketSummary>>
     val appSettings: StateFlow<AppSettings>
+    val paperTrading: StateFlow<PaperTradingDashboard?>
 
     suspend fun importCsv(content: String): ImportResult
     suspend fun configureAutoSync(folderUri: Uri)
@@ -30,6 +32,7 @@ interface PortfolioRepository {
     suspend fun loadPriceHistory(holding: Holding, days: Int = 90): PriceHistory
     suspend fun loadPortfolioHistory(days: Int = 365): PortfolioHistory
     suspend fun refreshMarketSummaries()
+    suspend fun refreshPaperTrading()
     suspend fun setDisplayCurrency(currency: Currency)
     suspend fun setUiLanguage(language: UiLanguage)
     suspend fun disableServerSync()

@@ -18,6 +18,7 @@ server/data/imports/*.json
 !server/data/imports/.gitkeep
 server/data/cache/
 server/data/raw/
+server/data/paper-trading.json
 server/browser-profiles/
 __pycache__/
 *.pyc

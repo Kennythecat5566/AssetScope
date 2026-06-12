@@ -159,6 +159,57 @@ data class PortfolioHistory(
     val points: List<PortfolioHistoryPoint>,
 )
 
+data class PaperBotTrade(
+    val id: String,
+    val timestamp: String,
+    val botId: String,
+    val symbol: String,
+    val name: String,
+    val side: String,
+    val quantity: Double,
+    val priceTwd: Double,
+    val amountTwd: Double,
+    val reason: String,
+)
+
+data class PaperBotPosition(
+    val symbol: String,
+    val name: String,
+    val quantity: Double,
+    val averageCostTwd: Double,
+    val marketPriceTwd: Double,
+    val marketValueTwd: Double,
+    val unrealizedProfitTwd: Double,
+)
+
+data class PaperBotEquityPoint(
+    val timestamp: String,
+    val netValueTwd: Double,
+)
+
+data class PaperBot(
+    val id: String,
+    val name: String,
+    val strategy: String,
+    val paperOnly: Boolean,
+    val initialCashTwd: Double,
+    val cashTwd: Double,
+    val netValueTwd: Double,
+    val totalReturnTwd: Double,
+    val returnRate: Double,
+    val tradeCount: Int,
+    val lastRunAt: String?,
+    val positions: List<PaperBotPosition>,
+    val recentTrades: List<PaperBotTrade>,
+    val equityHistory: List<PaperBotEquityPoint>,
+)
+
+data class PaperTradingDashboard(
+    val generatedAt: String,
+    val paperOnly: Boolean,
+    val bots: List<PaperBot>,
+)
+
 data class Allocation(
     val label: String,
     val valueTwd: Double,

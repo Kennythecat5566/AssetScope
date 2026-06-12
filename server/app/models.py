@@ -158,3 +158,54 @@ class PortfolioHistoryPoint(BaseModel):
 class PortfolioHistoryResponse(BaseModel):
     currency: Currency = Currency.TWD
     points: list[PortfolioHistoryPoint]
+
+
+class PaperBotTrade(BaseModel):
+    id: str
+    timestamp: datetime
+    bot_id: str
+    symbol: str
+    name: str
+    side: str
+    quantity: float = Field(gt=0)
+    price_twd: float = Field(gt=0)
+    amount_twd: float = Field(gt=0)
+    reason: str
+
+
+class PaperBotPosition(BaseModel):
+    symbol: str
+    name: str
+    quantity: float = Field(gt=0)
+    average_cost_twd: float = Field(gt=0)
+    market_price_twd: float = Field(gt=0)
+    market_value_twd: float = Field(gt=0)
+    unrealized_profit_twd: float
+
+
+class PaperBotEquityPoint(BaseModel):
+    timestamp: datetime
+    net_value_twd: float = Field(ge=0)
+
+
+class PaperBotSummary(BaseModel):
+    id: str
+    name: str
+    strategy: str
+    paper_only: bool = True
+    initial_cash_twd: float
+    cash_twd: float
+    net_value_twd: float
+    total_return_twd: float
+    return_rate: float
+    trade_count: int
+    last_run_at: datetime | None = None
+    positions: list[PaperBotPosition] = []
+    recent_trades: list[PaperBotTrade] = []
+    equity_history: list[PaperBotEquityPoint] = []
+
+
+class PaperTradingResponse(BaseModel):
+    generated_at: datetime
+    paper_only: bool = True
+    bots: list[PaperBotSummary]
