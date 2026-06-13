@@ -16,7 +16,12 @@ class AutoSyncWorker(
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result {
         return runCatching {
-            LocalPortfolioRepository(applicationContext).syncFromConfiguredFolder()
+            val repository = LocalPortfolioRepository(applicationContext)
+            try {
+                repository.syncFromConfiguredFolder()
+            } finally {
+                repository.close()
+            }
             Result.success()
         }.getOrElse {
             Result.retry()

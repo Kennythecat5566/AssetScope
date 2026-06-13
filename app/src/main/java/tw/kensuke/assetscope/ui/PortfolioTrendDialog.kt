@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -132,6 +133,16 @@ private fun PortfolioTrendChart(
     val lineColor = MaterialTheme.colorScheme.primary
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val multiplier = if (currency == Currency.TWD) 1.0 else 1 / usdToTwd
+    val density = LocalDensity.current
+    val convertedPoints = remember(history, multiplier) {
+        history.points.map { it.timestamp to it.valueTwd * multiplier }
+    }
+    val textPaint = remember(labelColor, density) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = labelColor.toAndroidArgb()
+            textSize = with(density) { 10.dp.toPx() }
+        }
+    }
 
     Canvas(
         modifier = modifier
@@ -139,14 +150,14 @@ private fun PortfolioTrendChart(
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
                 RoundedCornerShape(14.dp),
             )
-            .pointerInput(history) {
+            .pointerInput(convertedPoints) {
                 detectTransformGestures { _, pan, gestureZoom, _ ->
                     zoom = (zoom * gestureZoom).coerceIn(1f, 15f)
                     panFraction = (panFraction - pan.x / 700f).coerceIn(0f, 1f)
                 }
             },
     ) {
-        val points = history.points
+        val points = convertedPoints
         val visibleCount = (points.size / zoom).roundToInt().coerceIn(2, points.size)
         val maxStart = (points.size - visibleCount).coerceAtLeast(0)
         val start = (maxStart * panFraction).roundToInt().coerceIn(0, maxStart)
@@ -157,9 +168,12 @@ private fun PortfolioTrendChart(
         val bottom = 38.dp.toPx()
         val chartWidth = size.width - left - right
         val chartHeight = size.height - top - bottom
-        val values = visible.map { it.valueTwd * multiplier }
-        val rawMin = values.min()
-        val rawMax = values.max()
+        var rawMin = Double.POSITIVE_INFINITY
+        var rawMax = Double.NEGATIVE_INFINITY
+        visible.forEach { (_, value) ->
+            rawMin = minOf(rawMin, value)
+            rawMax = maxOf(rawMax, value)
+        }
         val padding = ((rawMax - rawMin) * 0.08).coerceAtLeast(rawMax * 0.005)
         val minValue = (rawMin - padding).coerceAtLeast(0.0)
         val maxValue = rawMax + padding
@@ -167,10 +181,6 @@ private fun PortfolioTrendChart(
         fun y(value: Double): Float =
             top + ((maxValue - value) / range * chartHeight).toFloat()
 
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = labelColor.toAndroidArgb()
-            textSize = 10.dp.toPx()
-        }
         repeat(4) { index ->
             val ratio = index / 3.0
             val lineY = top + chartHeight * ratio.toFloat()
@@ -192,7 +202,7 @@ private fun PortfolioTrendChart(
         val path = Path()
         visible.forEachIndexed { index, point ->
             val x = left + chartWidth * index / visible.lastIndex
-            val pointY = y(point.valueTwd * multiplier)
+            val pointY = y(point.second)
             if (index == 0) path.moveTo(x, pointY) else path.lineTo(x, pointY)
         }
         drawPath(path, color = lineColor, style = Stroke(width = 3.dp.toPx()))
@@ -201,13 +211,13 @@ private fun PortfolioTrendChart(
             drawCircle(
                 color = lineColor,
                 radius = 3.dp.toPx(),
-                center = Offset(x, y(point.valueTwd * multiplier)),
+                center = Offset(x, y(point.second)),
             )
         }
 
         listOf(0, visible.lastIndex / 2, visible.lastIndex).distinct().forEach { index ->
             val x = left + chartWidth * index / visible.lastIndex
-            val label = formatTimestamp(visible[index].timestamp)
+            val label = formatTimestamp(visible[index].first)
             val width = textPaint.measureText(label)
             drawContext.canvas.nativeCanvas.drawText(
                 label,

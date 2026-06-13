@@ -10,6 +10,7 @@ import tw.kensuke.assetscope.domain.model.MarketSummary
 import tw.kensuke.assetscope.domain.model.PortfolioInsights
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PaperTradingDashboard
+import tw.kensuke.assetscope.domain.model.PaperBot
 import tw.kensuke.assetscope.domain.model.PriceHistory
 import tw.kensuke.assetscope.domain.model.UiLanguage
 
@@ -33,10 +34,12 @@ interface PortfolioRepository {
     suspend fun loadPortfolioHistory(days: Int = 365): PortfolioHistory
     suspend fun refreshMarketSummaries()
     suspend fun refreshPaperTrading()
+    suspend fun loadPaperBot(botId: String): PaperBot
     suspend fun setDisplayCurrency(currency: Currency)
     suspend fun setUiLanguage(language: UiLanguage)
     suspend fun disableServerSync()
     suspend fun resetToSampleData()
+    fun close()
 }
 
 data class ImportResult(

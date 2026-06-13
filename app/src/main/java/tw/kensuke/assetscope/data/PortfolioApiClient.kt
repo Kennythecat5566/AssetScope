@@ -154,6 +154,30 @@ class PortfolioApiClient {
         }
     }
 
+    fun fetchPaperBot(
+        baseUrl: String,
+        apiToken: String,
+        botId: String,
+    ): PaperBot {
+        val normalizedUrl = validateAndNormalizeBaseUrl(baseUrl)
+        val token = normalizeApiToken(apiToken)
+        val connection = URI("$normalizedUrl/api/v1/paper-trading/$botId")
+            .toURL().openConnection() as HttpURLConnection
+        return try {
+            connection.connectTimeout = 8_000
+            connection.readTimeout = 15_000
+            connection.setRequestProperty("Accept", "application/json")
+            connection.setRequestProperty("Authorization", "Bearer $token")
+            val status = connection.responseCode
+            val body = (if (status in 200..299) connection.inputStream else connection.errorStream)
+                ?.bufferedReader()?.use { it.readText() }.orEmpty()
+            require(status in 200..299) { errorMessage(status, body) }
+            JSONObject(body).toPaperBot()
+        } finally {
+            connection.disconnect()
+        }
+    }
+
     fun fetchMarketSummaries(
         baseUrl: String,
         apiToken: String,
@@ -335,19 +359,29 @@ class PortfolioApiClient {
                 val trades = bot.getJSONArray("recent_trades")
                 val equity = bot.getJSONArray("equity_history")
                 val performance = bot.getJSONArray("performance_history")
-                PaperBot(
-                    id = bot.getString("id"),
-                    name = bot.getString("name"),
-                    strategy = bot.getString("strategy"),
-                    marketScope = bot.getString("market_scope"),
-                    paperOnly = bot.getBoolean("paper_only"),
-                    initialCashTwd = bot.getDouble("initial_cash_twd"),
-                    cashTwd = bot.getDouble("cash_twd"),
-                    netValueTwd = bot.getDouble("net_value_twd"),
-                    totalReturnTwd = bot.getDouble("total_return_twd"),
-                    returnRate = bot.getDouble("return_rate"),
-                    tradeCount = bot.getInt("trade_count"),
-                    lastRunAt = bot.optString("last_run_at")
+                bot.toPaperBot()
+            },
+        )
+    }
+
+    private fun JSONObject.toPaperBot(): PaperBot {
+        val positions = getJSONArray("positions")
+        val trades = getJSONArray("recent_trades")
+        val equity = getJSONArray("equity_history")
+        val performance = getJSONArray("performance_history")
+        return PaperBot(
+                    id = getString("id"),
+                    name = getString("name"),
+                    strategy = getString("strategy"),
+                    marketScope = getString("market_scope"),
+                    paperOnly = getBoolean("paper_only"),
+                    initialCashTwd = getDouble("initial_cash_twd"),
+                    cashTwd = getDouble("cash_twd"),
+                    netValueTwd = getDouble("net_value_twd"),
+                    totalReturnTwd = getDouble("total_return_twd"),
+                    returnRate = getDouble("return_rate"),
+                    tradeCount = getInt("trade_count"),
+                    lastRunAt = optString("last_run_at")
                         .takeIf { it.isNotBlank() && it != "null" },
                     positions = List(positions.length()) { positionIndex ->
                         positions.getJSONObject(positionIndex).let {
@@ -403,8 +437,6 @@ class PortfolioApiClient {
                         }
                     },
                 )
-            },
-        )
     }
 
     private fun validateAndNormalizeBaseUrl(value: String): String {

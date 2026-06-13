@@ -38,6 +38,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -360,6 +361,23 @@ private fun PaperPerformanceChart(
     val botColor = MaterialTheme.colorScheme.primary
     val taiwanColor = Color(0xFFB47B5D)
     val usColor = Color(0xFF7D9295)
+    val density = LocalDensity.current
+    val chartPoints = remember(points, multiplier) {
+        points.map {
+            PerformanceChartPoint(
+                timestamp = it.timestamp,
+                botValue = it.botValueTwd * multiplier,
+                taiwanValue = it.taiwanIndexValue?.times(multiplier),
+                usValue = it.usIndexValue?.times(multiplier),
+            )
+        }
+    }
+    val paint = remember(labelColor, density) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = labelColor.toArgb()
+            textSize = with(density) { 10.dp.toPx() }
+        }
+    }
 
     Canvas(
         modifier = modifier
@@ -367,39 +385,38 @@ private fun PaperPerformanceChart(
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                 RoundedCornerShape(16.dp),
             )
-            .pointerInput(points) {
+            .pointerInput(chartPoints) {
                 detectTransformGestures { _, pan, gestureZoom, _ ->
                     zoom = (zoom * gestureZoom).coerceIn(1f, 15f)
                     panFraction = (panFraction - pan.x / 700f).coerceIn(0f, 1f)
                 }
             },
     ) {
-        val visibleCount = (points.size / zoom).roundToInt().coerceIn(2, points.size)
-        val maxStart = (points.size - visibleCount).coerceAtLeast(0)
+        val visibleCount = (chartPoints.size / zoom)
+            .roundToInt().coerceIn(2, chartPoints.size)
+        val maxStart = (chartPoints.size - visibleCount).coerceAtLeast(0)
         val start = (maxStart * panFraction).roundToInt().coerceIn(0, maxStart)
-        val visible = points.subList(start, start + visibleCount)
+        val visible = chartPoints.subList(start, start + visibleCount)
         val left = 12.dp.toPx()
         val right = 64.dp.toPx()
         val top = 18.dp.toPx()
         val bottom = 36.dp.toPx()
         val width = size.width - left - right
         val height = size.height - top - bottom
-        val values = visible.flatMap {
-            listOfNotNull(it.botValueTwd, it.taiwanIndexValue, it.usIndexValue)
-        }.map { it * multiplier }
-        val rawMin = values.min()
-        val rawMax = values.max()
+        var rawMin = Double.POSITIVE_INFINITY
+        var rawMax = Double.NEGATIVE_INFINITY
+        visible.forEach { point ->
+            listOfNotNull(point.botValue, point.taiwanValue, point.usValue).forEach { value ->
+                rawMin = minOf(rawMin, value)
+                rawMax = maxOf(rawMax, value)
+            }
+        }
         val padding = ((rawMax - rawMin) * 0.08).coerceAtLeast(rawMax * 0.005)
         val minValue = (rawMin - padding).coerceAtLeast(0.0)
         val maxValue = rawMax + padding
         val range = (maxValue - minValue).coerceAtLeast(1.0)
         fun y(value: Double): Float =
-            top + ((maxValue - value * multiplier) / range * height).toFloat()
-
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = labelColor.toArgb()
-            textSize = 10.dp.toPx()
-        }
+            top + ((maxValue - value) / range * height).toFloat()
         repeat(4) { index ->
             val ratio = index / 3.0
             val lineY = top + height * ratio.toFloat()
@@ -419,7 +436,7 @@ private fun PaperPerformanceChart(
         }
 
         fun drawSeries(
-            value: (PaperBotPerformancePoint) -> Double?,
+            value: (PerformanceChartPoint) -> Double?,
             color: Color,
         ) {
             val path = Path()
@@ -437,9 +454,9 @@ private fun PaperPerformanceChart(
             }
             if (started) drawPath(path, color, style = Stroke(2.5.dp.toPx()))
         }
-        drawSeries(PaperBotPerformancePoint::botValueTwd, botColor)
-        drawSeries(PaperBotPerformancePoint::taiwanIndexValue, taiwanColor)
-        drawSeries(PaperBotPerformancePoint::usIndexValue, usColor)
+        drawSeries(PerformanceChartPoint::botValue, botColor)
+        drawSeries(PerformanceChartPoint::taiwanValue, taiwanColor)
+        drawSeries(PerformanceChartPoint::usValue, usColor)
 
         listOf(0, visible.lastIndex / 2, visible.lastIndex).distinct().forEach { index ->
             val x = left + width * index / visible.lastIndex
@@ -454,6 +471,13 @@ private fun PaperPerformanceChart(
         }
     }
 }
+
+private data class PerformanceChartPoint(
+    val timestamp: String,
+    val botValue: Double,
+    val taiwanValue: Double?,
+    val usValue: Double?,
+)
 
 private fun formatChartDate(value: String): String = runCatching {
     OffsetDateTime.parse(value).format(DateTimeFormatter.ofPattern("MM/dd"))

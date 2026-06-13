@@ -88,6 +88,13 @@ def run_paper_trading_cycle(settings: Settings) -> PaperTradingResponse:
             }
 
         state["benchmarks"] = _load_benchmarks(settings, state.get("benchmarks", {}))
+        state["quotes"] = {
+            symbol: {
+                "name": quote["name"],
+                "price_twd": quote["price_twd"],
+            }
+            for symbol, quote in quotes.items()
+        }
         now = datetime.now(UTC)
         for config in BOT_CONFIGS:
             bot = state["bots"][config["id"]]
@@ -101,7 +108,7 @@ def run_paper_trading_cycle(settings: Settings) -> PaperTradingResponse:
         return _to_response(state, quotes, now)
 
 
-def load_paper_trading(settings: Settings, run_cycle: bool = True) -> PaperTradingResponse:
+def load_paper_trading(settings: Settings, run_cycle: bool = False) -> PaperTradingResponse:
     if run_cycle and settings.paper_trading_enabled:
         return run_paper_trading_cycle(settings)
     with _lock:
@@ -109,7 +116,30 @@ def load_paper_trading(settings: Settings, run_cycle: bool = True) -> PaperTradi
             _state_path(settings),
             settings.paper_trading_initial_cash_twd,
         )
-        return _to_response(state, {}, datetime.now(UTC))
+        return _to_response(
+            state,
+            state.get("quotes", {}),
+            datetime.now(UTC),
+            trade_limit=10,
+        )
+
+
+def load_paper_bot(settings: Settings, bot_id: str) -> PaperBotSummary:
+    with _lock:
+        state = _load_state(
+            _state_path(settings),
+            settings.paper_trading_initial_cash_twd,
+        )
+        response = _to_response(
+            state,
+            state.get("quotes", {}),
+            datetime.now(UTC),
+            trade_limit=500,
+        )
+        for bot in response.bots:
+            if bot.id == bot_id:
+                return bot
+    raise ValueError(f"Unknown paper trading bot: {bot_id}")
 
 
 def _trade_bot(
@@ -260,6 +290,7 @@ def _to_response(
     state: dict[str, Any],
     quotes: dict[str, dict[str, Any]],
     now: datetime,
+    trade_limit: int = 10,
 ) -> PaperTradingResponse:
     summaries = []
     for config in BOT_CONFIGS:
@@ -303,7 +334,7 @@ def _to_response(
                 positions=position_models,
                 recent_trades=[
                     PaperBotTrade.model_validate(item)
-                    for item in reversed(bot["trades"][-500:])
+                    for item in reversed(bot["trades"][-trade_limit:])
                 ],
                 equity_history=[
                     PaperBotEquityPoint.model_validate(item)
@@ -383,6 +414,7 @@ def _load_state(path: Path, initial_cash: float) -> dict[str, Any]:
             "paper_only": True,
             "initial_cash_twd": initial_cash,
             "benchmarks": {},
+            "quotes": {},
             "bots": {
                 config["id"]: {
                     "cash_twd": initial_cash,
@@ -395,6 +427,7 @@ def _load_state(path: Path, initial_cash: float) -> dict[str, Any]:
             },
         }
     state.setdefault("benchmarks", {})
+    state.setdefault("quotes", {})
     for config in BOT_CONFIGS:
         bot = state["bots"][config["id"]]
         bot.setdefault("equity_history", [])

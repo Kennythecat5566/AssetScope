@@ -36,6 +36,11 @@ class MainActivity : ComponentActivity() {
         importSharedCsv(intent)
     }
 
+    override fun onDestroy() {
+        repository.close()
+        super.onDestroy()
+    }
+
     private fun importSharedCsv(intent: Intent?) {
         val sharedContent = intent?.sharedCsvContent() ?: return
         lifecycleScope.launch {

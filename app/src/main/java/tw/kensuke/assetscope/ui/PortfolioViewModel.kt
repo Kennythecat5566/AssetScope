@@ -44,6 +44,14 @@ class PortfolioViewModel(
 ) : ViewModel() {
     private val message = MutableStateFlow<String?>(null)
 
+    init {
+        if (repository.serverUrl.value != null) {
+            viewModelScope.launch {
+                runCatching { repository.syncFromServer() }
+            }
+        }
+    }
+
     private val portfolioState = combine(
         repository.holdings,
         repository.exchangeRates,

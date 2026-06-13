@@ -293,6 +293,13 @@ GET /api/v1/portfolio/history?days=365
 GET /api/v1/paper-trading
 ```
 
+摘要端點只回傳每台機器人最近 10 筆交易，且不會觸發策略執行。完整交易紀錄在
+使用者開啟詳細頁時按需讀取：
+
+```text
+GET /api/v1/paper-trading/{bot_id}
+```
+
 可在 `.env` 調整：
 
 ```dotenv

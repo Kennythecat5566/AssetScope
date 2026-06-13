@@ -3,7 +3,7 @@ from types import SimpleNamespace
 
 from app.config import Settings
 from app.models import AssetType, Currency, Institution
-from app.paper_trading import load_paper_trading, run_paper_trading_cycle
+from app.paper_trading import load_paper_bot, load_paper_trading, run_paper_trading_cycle
 
 
 def test_creates_three_paper_only_bots(monkeypatch, tmp_path) -> None:
@@ -104,3 +104,4 @@ def test_load_without_cycle_never_requires_broker(monkeypatch, tmp_path) -> None
         "conservative",
         "unrestricted",
     }
+    assert load_paper_bot(settings, "aggressive").id == "aggressive"

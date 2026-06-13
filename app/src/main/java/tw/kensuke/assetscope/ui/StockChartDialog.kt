@@ -37,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -362,6 +363,24 @@ private fun PriceChart(
     val gridColor = MaterialTheme.colorScheme.outlineVariant
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val averageColor = MaterialTheme.colorScheme.secondary
+    val density = LocalDensity.current
+    val convertedCandles = remember(candles, multiplier) {
+        candles.map {
+            ChartCandle(
+                date = it.date,
+                open = it.open * multiplier,
+                high = it.high * multiplier,
+                low = it.low * multiplier,
+                close = it.close * multiplier,
+            )
+        }
+    }
+    val textPaint = remember(labelColor, density) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = labelColor.toArgb()
+            textSize = with(density) { 10.dp.toPx() }
+        }
+    }
 
     Canvas(
         modifier = modifier
@@ -369,18 +388,19 @@ private fun PriceChart(
                 MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
                 RoundedCornerShape(14.dp),
             )
-            .pointerInput(candles) {
+            .pointerInput(convertedCandles) {
                 detectTransformGestures { _, pan, gestureZoom, _ ->
                     zoom = (zoom * gestureZoom).coerceIn(1f, 15f)
                     panFraction = (panFraction - pan.x / 700f).coerceIn(0f, 1f)
                 }
             },
     ) {
-        if (candles.size < 2) return@Canvas
-        val visibleCount = (candles.size / zoom).roundToInt().coerceIn(5, candles.size)
-        val maxStart = (candles.size - visibleCount).coerceAtLeast(0)
+        if (convertedCandles.size < 2) return@Canvas
+        val visibleCount = (convertedCandles.size / zoom)
+            .roundToInt().coerceIn(5, convertedCandles.size)
+        val maxStart = (convertedCandles.size - visibleCount).coerceAtLeast(0)
         val start = (maxStart * panFraction).roundToInt().coerceIn(0, maxStart)
-        val visible = candles.subList(start, start + visibleCount)
+        val visible = convertedCandles.subList(start, start + visibleCount)
         val left = 12.dp.toPx()
         val right = 86.dp.toPx()
         val top = 16.dp.toPx()
@@ -389,21 +409,17 @@ private fun PriceChart(
         val chartHeight = size.height - top - bottom
         val convertedAverage = averageCost * multiplier
         val minPrice = minOf(
-            visible.minOf(PriceCandle::low) * multiplier,
+            visible.minOf(ChartCandle::low),
             convertedAverage,
         ) * 0.995
         val maxPrice = maxOf(
-            visible.maxOf(PriceCandle::high) * multiplier,
+            visible.maxOf(ChartCandle::high),
             convertedAverage,
         ) * 1.005
         val range = (maxPrice - minPrice).coerceAtLeast(0.01)
         fun y(price: Double): Float =
             top + ((maxPrice - price) / range * chartHeight).toFloat()
 
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = labelColor.toArgb()
-            textSize = 10.dp.toPx()
-        }
         repeat(4) { index ->
             val ratio = index / 3.0
             val lineY = top + chartHeight * ratio.toFloat()
@@ -438,12 +454,12 @@ private fun PriceChart(
             val color = if (candle.close >= candle.open) upColor else downColor
             drawLine(
                 color = color,
-                start = Offset(x, y(candle.high * multiplier)),
-                end = Offset(x, y(candle.low * multiplier)),
+                start = Offset(x, y(candle.high)),
+                end = Offset(x, y(candle.low)),
                 strokeWidth = 1.dp.toPx(),
             )
-            val bodyTop = minOf(y(candle.open * multiplier), y(candle.close * multiplier))
-            val bodyBottom = maxOf(y(candle.open * multiplier), y(candle.close * multiplier))
+            val bodyTop = minOf(y(candle.open), y(candle.close))
+            val bodyBottom = maxOf(y(candle.open), y(candle.close))
             drawRect(
                 color = color,
                 topLeft = Offset(x - bodyWidth / 2, bodyTop),
@@ -464,6 +480,14 @@ private fun PriceChart(
         }
     }
 }
+
+private data class ChartCandle(
+    val date: String,
+    val open: Double,
+    val high: Double,
+    val low: Double,
+    val close: Double,
+)
 
 private fun conversionMultiplier(
     source: Currency,

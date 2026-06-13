@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -61,13 +62,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -109,7 +111,7 @@ import java.util.Locale
 @Composable
 fun AssetScopeApp(repository: PortfolioRepository) {
     val viewModel: PortfolioViewModel = viewModel(factory = PortfolioViewModel.factory(repository))
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val updateManager = remember { AppUpdateManager(context) }
     val coroutineScope = rememberCoroutineScope()
@@ -120,7 +122,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     var chartHistory by remember { mutableStateOf<PriceHistory?>(null) }
     var chartLoading by remember { mutableStateOf(false) }
     var chartError by remember { mutableStateOf<String?>(null) }
-    var chartDays by remember { mutableStateOf(90) }
+    var chartDays by remember { mutableIntStateOf(90) }
     var showPortfolioTrend by remember { mutableStateOf(false) }
     var portfolioHistory by remember { mutableStateOf<PortfolioHistory?>(null) }
     var portfolioHistoryLoading by remember { mutableStateOf(false) }
@@ -162,16 +164,6 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 .onSuccess { availableUpdate = it }
                 .onFailure { updateMessage = it.message }
             checkingUpdate = false
-        }
-    }
-    LaunchedEffect(state.serverUrl) {
-        if (state.serverUrl != null) {
-            runCatching { repository.syncFromServer() }
-        }
-    }
-    LaunchedEffect(state.serverUrl, state.holdings) {
-        if (state.serverUrl != null) {
-            runCatching { repository.refreshMarketSummaries() }
         }
     }
     LaunchedEffect(updateMessage) {
@@ -281,6 +273,23 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                     state.holdings
                         .filter(Holding::isCurrencyHolding)
                         .sortedBy(Holding::symbol)
+                }
+                val filteredTransactions = remember(state.transactions, transactionFilter) {
+                    when (transactionFilter) {
+                        TransactionFilter.ALL -> state.transactions
+                        TransactionFilter.FIRSTRADE -> state.transactions.filter {
+                            it.institution == Institution.FIRSTRade
+                        }
+                        TransactionFilter.SINOPAC -> state.transactions.filter {
+                            it.institution == Institution.SINOPAC_SECURITIES
+                        }
+                    }
+                }
+                val expenseData = remember(state.expenses, state.rates.usdToTwd) {
+                    buildExpensePageData(
+                        expenses = state.expenses,
+                        usdToTwd = state.rates.usdToTwd,
+                    )
                 }
                 Box(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
@@ -422,15 +431,6 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                             }
                         }
                         AppPage.TRANSACTIONS -> {
-                            val filteredTransactions = when (transactionFilter) {
-                                TransactionFilter.ALL -> state.transactions
-                                TransactionFilter.FIRSTRADE -> state.transactions.filter {
-                                    it.institution == Institution.FIRSTRade
-                                }
-                                TransactionFilter.SINOPAC -> state.transactions.filter {
-                                    it.institution == Institution.SINOPAC_SECURITIES
-                                }
-                            }
                             item(key = "transactions-header") {
                                 TransactionHeader(
                                     totalCount = state.transactions.size,
@@ -438,20 +438,21 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                     onFilterChange = { transactionFilter = it },
                                 )
                             }
-                            item(key = "transactions-timeline") {
-                                TransactionContent(
-                                    transactions = filteredTransactions,
-                                    filter = transactionFilter,
-                                    displayCurrency = displayCurrency,
-                                    usdToTwd = state.rates.usdToTwd,
-                                )
+                            if (filteredTransactions.isEmpty()) {
+                                item(key = "transactions-empty") {
+                                    TransactionEmptyState(transactionFilter)
+                                }
+                            } else {
+                                items(filteredTransactions, key = Transaction::id) { transaction ->
+                                    TransactionListItem(
+                                        transaction = transaction,
+                                        displayCurrency = displayCurrency,
+                                        usdToTwd = state.rates.usdToTwd,
+                                    )
+                                }
                             }
                         }
                         AppPage.EXPENSES -> {
-                            val expenseData = buildExpensePageData(
-                                expenses = state.expenses,
-                                usdToTwd = state.rates.usdToTwd,
-                            )
                             item(key = "expenses-summary") {
                                 ExpenseSummarySection(
                                     data = expenseData,
@@ -473,9 +474,21 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                         )
                                     }
                                 }
-                                item(key = "expenses-activity") {
-                                    ExpenseActivitySection(
-                                        expenses = expenseData.monthlyExpenses,
+                                item(key = "expenses-activity-header") {
+                                    SectionHeader(
+                                        uiText("刷卡明細", "Card activity"),
+                                        uiText(
+                                            "${expenseData.monthlyExpenses.size} 筆",
+                                            "${expenseData.monthlyExpenses.size} items",
+                                        ),
+                                    )
+                                }
+                                items(
+                                    expenseData.monthlyExpenses,
+                                    key = Expense::id,
+                                ) { expense ->
+                                    ExpenseListItem(
+                                        expense = expense,
                                         displayCurrency = displayCurrency,
                                         usdToTwd = state.rates.usdToTwd,
                                     )
@@ -489,7 +502,17 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                     displayCurrency = displayCurrency,
                                     usdToTwd = state.rates.usdToTwd,
                                     onRefresh = viewModel::refreshPaperTrading,
-                                    onOpenBot = { selectedPaperBot = it },
+                                    onOpenBot = { bot ->
+                                        selectedPaperBot = bot
+                                        coroutineScope.launch {
+                                            runCatching { repository.loadPaperBot(bot.id) }
+                                                .onSuccess { selectedPaperBot = it }
+                                                .onFailure {
+                                                    updateMessage = it.message
+                                                        ?: "無法載入機器人詳細資料"
+                                                }
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -695,18 +718,18 @@ private fun PageNavigation(
     selectedPage: Int,
     onPageSelected: (Int) -> Unit,
 ) {
-    Row(
+    LazyRow(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 18.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        AppPage.entries.forEachIndexed { index, page ->
+        items(AppPage.entries.size) { index ->
+            val page = AppPage.entries[index]
             Button(
                 onClick = { onPageSelected(index) },
-                modifier = Modifier.weight(1f),
                 contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 4.dp,
+                    horizontal = 18.dp,
                     vertical = 8.dp,
                 ),
                 colors = ButtonDefaults.buttonColors(
@@ -727,6 +750,87 @@ private fun PageNavigation(
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun TransactionEmptyState(filter: TransactionFilter) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Text(
+            text = when (filter) {
+                TransactionFilter.ALL -> uiText(
+                    "尚無交易資料。請到「同步」頁按立即同步。",
+                    "No transactions yet. Open Sync and tap Sync now.",
+                )
+                TransactionFilter.FIRSTRADE -> uiText(
+                    "尚無 Firstrade 交易資料，請重新匯出交易 CSV。",
+                    "No Firstrade transactions. Export the transaction CSV again.",
+                )
+                TransactionFilter.SINOPAC -> uiText(
+                    "目前沒有 Shioaji 可查的永豐交易資料。",
+                    "No SinoPac transactions are currently available from Shioaji.",
+                )
+            },
+            modifier = Modifier.padding(20.dp),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun TransactionListItem(
+    transaction: Transaction,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Box(modifier = Modifier.padding(16.dp)) {
+            TransactionRow(transaction, displayCurrency, usdToTwd)
+        }
+    }
+}
+
+@Composable
+private fun ExpenseListItem(
+    expense: Expense,
+    displayCurrency: Currency,
+    usdToTwd: Double,
+) {
+    val multiplier = currencyMultiplier(expense.currency, displayCurrency, usdToTwd)
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    expense.merchant,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    "${expense.transactionDate} · ${expense.category.localizedName()}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text((expense.amount * multiplier).asSignedMoney(displayCurrency))
         }
     }
 }
@@ -1858,19 +1962,6 @@ private fun HoldingRow(
                     holding.returnRate.asPercent(),
                     style = MaterialTheme.typography.labelSmall,
                     color = if (holding.returnRate >= 0) profitColor else lossColor,
-                )
-            }
-            if (isMarketAsset) {
-                Spacer(Modifier.height(5.dp))
-                Text(
-                    uiText(
-                        "點擊查看 K 線 · ${marketSummary?.source ?: "行情載入中"}",
-                        "Tap for candlestick chart · ${
-                            marketSummary?.source ?: "Loading quotes"
-                        }",
-                    ),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.secondary,
                 )
             }
         }

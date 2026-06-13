@@ -21,8 +21,8 @@ android {
         applicationId = "tw.kensuke.assetscope"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.8.1"
+        versionCode = 21
+        versionName = "0.9.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -87,6 +87,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.documentfile)
     implementation(libs.androidx.work.runtime.ktx)

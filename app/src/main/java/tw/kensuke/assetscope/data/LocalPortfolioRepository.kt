@@ -23,6 +23,7 @@ import tw.kensuke.assetscope.domain.model.PortfolioInsights
 import tw.kensuke.assetscope.domain.model.PortfolioHistory
 import tw.kensuke.assetscope.domain.model.PriceHistory
 import tw.kensuke.assetscope.domain.model.PaperTradingDashboard
+import tw.kensuke.assetscope.domain.model.PaperBot
 import tw.kensuke.assetscope.domain.model.Transaction
 import tw.kensuke.assetscope.domain.model.TransactionType
 import tw.kensuke.assetscope.domain.model.UiLanguage
@@ -81,13 +82,18 @@ class LocalPortfolioRepository(
         preferences.registerOnSharedPreferenceChangeListener(preferenceListener)
     }
 
-    override suspend fun importCsv(content: String): ImportResult {
+    override suspend fun importCsv(content: String): ImportResult = withContext(Dispatchers.IO) {
         val (imported, skipped) = CsvHoldingParser.parse(content)
         if (imported.isNotEmpty()) {
             mutableHoldings.value = imported
             saveHoldings(imported)
+            val baseUrl = preferences.getString(KEY_SERVER_URL, null)
+            val token = preferences.getString(KEY_SERVER_TOKEN, null)
+            if (baseUrl != null && token != null) {
+                refreshMarketSummariesSafely(baseUrl, token)
+            }
         }
-        return ImportResult(importedCount = imported.size, skippedCount = skipped)
+        ImportResult(importedCount = imported.size, skippedCount = skipped)
     }
 
     override suspend fun configureAutoSync(folderUri: Uri) {
@@ -215,6 +221,14 @@ class LocalPortfolioRepository(
         mutablePaperTrading.value = PortfolioApiClient().fetchPaperTrading(baseUrl, token)
     }
 
+    override suspend fun loadPaperBot(botId: String): PaperBot = withContext(Dispatchers.IO) {
+        val baseUrl = preferences.getString(KEY_SERVER_URL, null)
+            ?: error("請先連接電腦資產伺服器")
+        val token = preferences.getString(KEY_SERVER_TOKEN, null)
+            ?: error("尚未設定 API Token")
+        PortfolioApiClient().fetchPaperBot(baseUrl, token, botId)
+    }
+
     override suspend fun setDisplayCurrency(currency: Currency) {
         preferences.edit().putString(KEY_DISPLAY_CURRENCY, currency.name).apply()
         mutableAppSettings.value = mutableAppSettings.value.copy(displayCurrency = currency)
@@ -266,6 +280,17 @@ class LocalPortfolioRepository(
     override suspend fun resetToSampleData() {
         mutableHoldings.value = sampleHoldings
         saveHoldings(sampleHoldings)
+        val baseUrl = preferences.getString(KEY_SERVER_URL, null)
+        val token = preferences.getString(KEY_SERVER_TOKEN, null)
+        if (baseUrl != null && token != null) {
+            withContext(Dispatchers.IO) {
+                refreshMarketSummariesSafely(baseUrl, token)
+            }
+        }
+    }
+
+    override fun close() {
+        preferences.unregisterOnSharedPreferenceChangeListener(preferenceListener)
     }
 
     private fun loadHoldings(): List<Holding> {

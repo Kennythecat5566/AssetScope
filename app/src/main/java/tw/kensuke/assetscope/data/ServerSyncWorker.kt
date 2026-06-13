@@ -15,7 +15,12 @@ class ServerSyncWorker(
     workerParams: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result = runCatching {
-        LocalPortfolioRepository(applicationContext).syncFromServer()
+        val repository = LocalPortfolioRepository(applicationContext)
+        try {
+            repository.syncFromServer()
+        } finally {
+            repository.close()
+        }
         Result.success()
     }.getOrElse {
         Result.retry()

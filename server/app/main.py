@@ -14,8 +14,9 @@ from app.models import (
     PortfolioResponse,
     PriceHistoryResponse,
     PaperTradingResponse,
+    PaperBotSummary,
 )
-from app.paper_trading import load_paper_trading, run_paper_trading_cycle
+from app.paper_trading import load_paper_bot, load_paper_trading, run_paper_trading_cycle
 from app.portfolio_history import load_portfolio_history
 from app.service import build_portfolio
 
@@ -161,9 +162,27 @@ def paper_trading(
     settings: Settings = Depends(get_settings),
 ) -> PaperTradingResponse:
     try:
-        return load_paper_trading(settings)
+        return load_paper_trading(settings, run_cycle=False)
     except (OSError, RuntimeError, ValueError) as error:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(error),
+        ) from error
+
+
+@app.get(
+    "/api/v1/paper-trading/{bot_id}",
+    response_model=PaperBotSummary,
+    dependencies=[Depends(authorize)],
+)
+def paper_trading_bot(
+    bot_id: str,
+    settings: Settings = Depends(get_settings),
+) -> PaperBotSummary:
+    try:
+        return load_paper_bot(settings, bot_id)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
             detail=str(error),
         ) from error
