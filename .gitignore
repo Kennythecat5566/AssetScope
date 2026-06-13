@@ -25,3 +25,7 @@ __pycache__/
 *.egg-info/
 shioaji.log
 /api_key.txt
+ios/*.xcodeproj/
+ios/DerivedData/
+ios/.build/
+ios/xcuserdata/
