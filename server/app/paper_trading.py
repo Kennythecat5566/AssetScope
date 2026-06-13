@@ -27,17 +27,17 @@ from app.service import build_portfolio
 BOT_CONFIGS = (
     {
         "id": "aggressive",
-        "name": "美股動能機器人",
-        "strategy": "積極追蹤短期動能，只交易美股個股",
+        "name": "美股自由機器人",
+        "strategy": "不限制策略風格，只交易美股個股",
         "market_scope": "US_STOCKS",
-        "allocation": 0.35,
+        "allocation": 0.90,
     },
     {
         "id": "conservative",
-        "name": "台股穩健機器人",
-        "strategy": "以中期趨勢與均線確認，只交易台股個股",
+        "name": "台股自由機器人",
+        "strategy": "不限制策略風格，只交易台股個股",
         "market_scope": "TW_STOCKS",
-        "allocation": 0.12,
+        "allocation": 0.90,
     },
     {
         "id": "unrestricted",
@@ -151,29 +151,38 @@ def _trade_bot(
         for symbol, quote in quotes.items()
         if _is_allowed(config["market_scope"], quote)
     }
-    scored = sorted(
+    ranked = sorted(
         allowed_quotes.items(),
-        key=lambda item: item[1]["return_5"],
+        key=lambda item: _ranking_score(item[1]),
         reverse=True,
     )
+    target_symbols = {symbol for symbol, _ in ranked[:1]}
     for symbol, quote in allowed_quotes.items():
         if symbol not in eligible_symbols:
             continue
         position = positions.get(symbol)
-        signal = _signal(bot_id, quote, position is not None)
         bot["last_cycles"][symbol] = f"{symbol}:{quote['date']}"
-        if signal == "SELL" and position:
+        if position and symbol not in target_symbols:
             quantity = position["quantity"]
             amount = quantity * quote["price_twd"]
             bot["cash_twd"] += amount
             del positions[symbol]
-            _record_trade(bot_id, bot, symbol, quote, "SELL", quantity, amount, now, signal)
+            _record_trade(
+                bot_id,
+                bot,
+                symbol,
+                quote,
+                "SELL",
+                quantity,
+                amount,
+                now,
+                "portfolio_rotation",
+            )
 
-    candidates = scored if bot_id != "unrestricted" else scored[:1]
-    for symbol, quote in candidates:
+    for symbol, quote in ranked[:1]:
         if symbol not in eligible_symbols:
             continue
-        if _signal(bot_id, quote, symbol in positions) != "BUY":
+        if symbol in positions:
             continue
         budget = bot["cash_twd"] * config["allocation"]
         quantity = int(budget / quote["price_twd"])
@@ -195,8 +204,7 @@ def _trade_bot(
             }
         bot["cash_twd"] -= amount
         _record_trade(bot_id, bot, symbol, quote, "BUY", quantity, amount, now, "signal")
-        if bot_id != "aggressive":
-            break
+        break
 
 
 def _is_allowed(market_scope: str, quote: dict[str, Any]) -> bool:
@@ -213,23 +221,8 @@ def _is_allowed(market_scope: str, quote: dict[str, Any]) -> bool:
     }
 
 
-def _signal(bot_id: str, quote: dict[str, Any], holding: bool) -> str:
-    if bot_id == "aggressive":
-        if quote["return_5"] > 0.006:
-            return "BUY"
-        if holding and quote["return_5"] < -0.004:
-            return "SELL"
-    elif bot_id == "conservative":
-        if quote["return_20"] > 0.025 and quote["above_ma20"]:
-            return "BUY"
-        if holding and not quote["above_ma20"]:
-            return "SELL"
-    else:
-        if quote["return_5"] >= 0:
-            return "BUY"
-        if holding:
-            return "SELL"
-    return "HOLD"
+def _ranking_score(quote: dict[str, Any]) -> float:
+    return quote["return_5"] + quote["return_20"] * 0.35
 
 
 def _record_trade(

@@ -2115,20 +2115,20 @@ private fun PaperBotCard(
 
 @Composable
 internal fun botDisplayName(bot: PaperBot): String = when (bot.id) {
-    "aggressive" -> uiText("美股動能機器人", "US momentum bot")
-    "conservative" -> uiText("台股穩健機器人", "Taiwan steady bot")
+    "aggressive" -> uiText("美股自由機器人", "US unrestricted bot")
+    "conservative" -> uiText("台股自由機器人", "Taiwan unrestricted bot")
     else -> uiText("全球自由機器人", "Global unrestricted bot")
 }
 
 @Composable
 internal fun botStrategy(bot: PaperBot): String = when (bot.id) {
     "aggressive" -> uiText(
-        "積極追蹤短期動能，只交易美股個股",
-        "Aggressive short-term momentum, US stocks only",
+        "不限制策略風格，只交易美股個股",
+        "Unrestricted strategy style, US stocks only",
     )
     "conservative" -> uiText(
-        "以中期趨勢與均線確認，只交易台股個股",
-        "Trend and moving-average confirmation, Taiwan stocks only",
+        "不限制策略風格，只交易台股個股",
+        "Unrestricted strategy style, Taiwan stocks only",
     )
     else -> uiText(
         "不限制集中度與周轉率，可交易全部美股與台股個股",

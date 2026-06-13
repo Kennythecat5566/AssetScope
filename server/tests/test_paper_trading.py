@@ -42,8 +42,10 @@ def test_creates_three_paper_only_bots(monkeypatch, tmp_path) -> None:
         "app.paper_trading.load_exchange_rates",
         lambda _: SimpleNamespace(usd_to_twd=32.0),
     )
+    # A declining series proves the market-specific bots are no longer
+    # blocked by the former momentum or moving-average entry thresholds.
     candles = [
-        SimpleNamespace(date=f"2026-05-{day:02d}", close=100 + day)
+        SimpleNamespace(date=f"2026-05-{day:02d}", close=200 - day)
         for day in range(1, 31)
     ]
     monkeypatch.setattr(
@@ -75,6 +77,10 @@ def test_creates_three_paper_only_bots(monkeypatch, tmp_path) -> None:
     assert all(bot.initial_cash_twd == 100_000 for bot in response.bots)
     assert {position.symbol for position in response.bots[0].positions} == {"AAPL"}
     assert {position.symbol for position in response.bots[1].positions} == {"2330"}
+    assert response.bots[0].name == "美股自由機器人"
+    assert response.bots[1].name == "台股自由機器人"
+    assert response.bots[0].cash_twd < 20_000
+    assert response.bots[1].cash_twd < 20_000
     assert all(
         position.symbol != "VOO"
         for bot in response.bots
