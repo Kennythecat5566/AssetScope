@@ -87,6 +87,25 @@ def load_market_summaries(
     return summaries
 
 
+def load_benchmark_history(
+    settings: Settings,
+    symbol: str,
+    days: int = 365,
+) -> PriceHistoryResponse:
+    normalized_symbol = symbol.strip().upper()
+    if normalized_symbol not in {"^TWII", "^GSPC"}:
+        raise ValueError("Unsupported benchmark symbol")
+    cache_path = settings.import_dir.parent / "cache" / (
+        f"benchmark-{normalized_symbol.replace('^', '').lower()}-{days}.json"
+    )
+    cached = _read_cache(cache_path)
+    if cached is not None:
+        return cached
+    response = _load_us_history(normalized_symbol, days)
+    _write_cache(cache_path, response)
+    return response
+
+
 def _load_shioaji_history(
     settings: Settings,
     symbol: str,

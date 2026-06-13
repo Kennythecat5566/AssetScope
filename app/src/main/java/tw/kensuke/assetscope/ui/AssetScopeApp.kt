@@ -125,6 +125,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
     var portfolioHistory by remember { mutableStateOf<PortfolioHistory?>(null) }
     var portfolioHistoryLoading by remember { mutableStateOf(false) }
     var portfolioHistoryError by remember { mutableStateOf<String?>(null) }
+    var selectedPaperBot by remember { mutableStateOf<PaperBot?>(null) }
     val displayCurrency = state.appSettings.displayCurrency
     var showSettings by remember { mutableStateOf(false) }
     var checkingUpdate by remember { mutableStateOf(false) }
@@ -488,6 +489,7 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                                     displayCurrency = displayCurrency,
                                     usdToTwd = state.rates.usdToTwd,
                                     onRefresh = viewModel::refreshPaperTrading,
+                                    onOpenBot = { selectedPaperBot = it },
                                 )
                             }
                         }
@@ -577,6 +579,15 @@ fun AssetScopeApp(repository: PortfolioRepository) {
                 chartHistory = null
                 chartError = null
             },
+        )
+    }
+
+    selectedPaperBot?.let { bot ->
+        PaperBotDetailDialog(
+            bot = bot,
+            displayCurrency = displayCurrency,
+            usdToTwd = state.rates.usdToTwd,
+            onDismiss = { selectedPaperBot = null },
         )
     }
     if (showPortfolioTrend) {
@@ -1950,6 +1961,7 @@ private fun PaperTradingPage(
     displayCurrency: Currency,
     usdToTwd: Double,
     onRefresh: () -> Unit,
+    onOpenBot: (PaperBot) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(
@@ -1993,7 +2005,9 @@ private fun PaperTradingPage(
             }
         } else {
             dashboard.bots.forEach { bot ->
-                PaperBotCard(bot, displayCurrency, usdToTwd)
+                PaperBotCard(bot, displayCurrency, usdToTwd) {
+                    onOpenBot(bot)
+                }
             }
         }
     }
@@ -2004,9 +2018,11 @@ private fun PaperBotCard(
     bot: PaperBot,
     displayCurrency: Currency,
     usdToTwd: Double,
+    onClick: () -> Unit,
 ) {
     val multiplier = if (displayCurrency == Currency.TWD) 1.0 else 1 / usdToTwd
     Card(
+        onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -2017,9 +2033,9 @@ private fun PaperBotCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(bot.name, style = MaterialTheme.typography.titleMedium)
+                    Text(botDisplayName(bot), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        bot.strategy,
+                        botStrategy(bot),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -2087,8 +2103,37 @@ private fun PaperBotCard(
                     )
                 }
             }
+            Spacer(Modifier.height(10.dp))
+            Text(
+                uiText("點擊查看資產趨勢與全部交易紀錄", "Open performance and full trade history"),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.secondary,
+            )
         }
     }
+}
+
+@Composable
+internal fun botDisplayName(bot: PaperBot): String = when (bot.id) {
+    "aggressive" -> uiText("美股動能機器人", "US momentum bot")
+    "conservative" -> uiText("台股穩健機器人", "Taiwan steady bot")
+    else -> uiText("全球自由機器人", "Global unrestricted bot")
+}
+
+@Composable
+internal fun botStrategy(bot: PaperBot): String = when (bot.id) {
+    "aggressive" -> uiText(
+        "積極追蹤短期動能，只交易美股個股",
+        "Aggressive short-term momentum, US stocks only",
+    )
+    "conservative" -> uiText(
+        "以中期趨勢與均線確認，只交易台股個股",
+        "Trend and moving-average confirmation, Taiwan stocks only",
+    )
+    else -> uiText(
+        "不限制集中度與周轉率，可交易全部美股與台股個股",
+        "Unrestricted concentration and turnover across US and Taiwan stocks",
+    )
 }
 
 @Composable

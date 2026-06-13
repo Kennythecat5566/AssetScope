@@ -9,13 +9,14 @@ from typing import Any
 
 from app.config import Settings
 from app.connectors.exchange_rates import load_exchange_rates
-from app.connectors.price_history import load_price_history
+from app.connectors.price_history import load_benchmark_history, load_price_history
 from app.models import (
     AssetType,
     Currency,
-    Holding,
-    PaperBotPosition,
+    Institution,
     PaperBotEquityPoint,
+    PaperBotPerformancePoint,
+    PaperBotPosition,
     PaperBotSummary,
     PaperBotTrade,
     PaperTradingResponse,
@@ -24,9 +25,27 @@ from app.service import build_portfolio
 
 
 BOT_CONFIGS = (
-    ("aggressive", "激進型", "短線動能、高週轉", 0.35),
-    ("conservative", "穩健型", "趨勢確認、低部位", 0.12),
-    ("unrestricted", "無限制型", "虛擬帳戶內不設集中度與週轉限制", 0.90),
+    {
+        "id": "aggressive",
+        "name": "美股動能機器人",
+        "strategy": "積極追蹤短期動能，只交易美股個股",
+        "market_scope": "US_STOCKS",
+        "allocation": 0.35,
+    },
+    {
+        "id": "conservative",
+        "name": "台股穩健機器人",
+        "strategy": "以中期趨勢與均線確認，只交易台股個股",
+        "market_scope": "TW_STOCKS",
+        "allocation": 0.12,
+    },
+    {
+        "id": "unrestricted",
+        "name": "全球自由機器人",
+        "strategy": "不限制集中度與周轉率，可交易全部美股與台股個股",
+        "market_scope": "ALL_STOCKS",
+        "allocation": 0.90,
+    },
 )
 _lock = Lock()
 
@@ -64,14 +83,18 @@ def run_paper_trading_cycle(settings: Settings) -> PaperTradingResponse:
                 "return_5": closes[-1] / closes[-6] - 1,
                 "return_20": closes[-1] / closes[max(0, len(closes) - 20)] - 1,
                 "above_ma20": closes[-1] >= sum(closes[-20:]) / min(20, len(closes)),
+                "institution": holding.institution.value,
+                "asset_type": holding.asset_type.value,
             }
 
+        state["benchmarks"] = _load_benchmarks(settings, state.get("benchmarks", {}))
         now = datetime.now(UTC)
-        for bot_id, name, strategy, allocation in BOT_CONFIGS:
-            bot = state["bots"][bot_id]
-            _trade_bot(bot_id, bot, quotes, allocation, now)
-            bot["name"] = name
-            bot["strategy"] = strategy
+        for config in BOT_CONFIGS:
+            bot = state["bots"][config["id"]]
+            _trade_bot(config, bot, quotes, now)
+            bot["name"] = config["name"]
+            bot["strategy"] = config["strategy"]
+            bot["market_scope"] = config["market_scope"]
             bot["last_run_at"] = now.isoformat()
             _record_equity(bot, quotes, now)
         _save_state(state_path, state)
@@ -90,26 +113,55 @@ def load_paper_trading(settings: Settings, run_cycle: bool = True) -> PaperTradi
 
 
 def _trade_bot(
-    bot_id: str,
+    config: dict[str, Any],
     bot: dict[str, Any],
     quotes: dict[str, dict[str, Any]],
-    allocation: float,
     now: datetime,
 ) -> None:
+    bot_id = config["id"]
     positions = bot["positions"]
-    scored = sorted(quotes.items(), key=lambda item: item[1]["return_5"], reverse=True)
     eligible_symbols = {
         symbol
         for symbol, quote in quotes.items()
         if bot["last_cycles"].get(symbol) != f"{symbol}:{quote['date']}"
     }
-    for symbol, quote in quotes.items():
+
+    for symbol, position in list(positions.items()):
+        quote = quotes.get(symbol)
+        if quote is None or _is_allowed(config["market_scope"], quote):
+            continue
+        quantity = position["quantity"]
+        amount = quantity * quote["price_twd"]
+        bot["cash_twd"] += amount
+        del positions[symbol]
+        _record_trade(
+            bot_id,
+            bot,
+            symbol,
+            quote,
+            "SELL",
+            quantity,
+            amount,
+            now,
+            "market_scope_changed",
+        )
+
+    allowed_quotes = {
+        symbol: quote
+        for symbol, quote in quotes.items()
+        if _is_allowed(config["market_scope"], quote)
+    }
+    scored = sorted(
+        allowed_quotes.items(),
+        key=lambda item: item[1]["return_5"],
+        reverse=True,
+    )
+    for symbol, quote in allowed_quotes.items():
         if symbol not in eligible_symbols:
             continue
         position = positions.get(symbol)
         signal = _signal(bot_id, quote, position is not None)
-        cycle_key = f"{symbol}:{quote['date']}"
-        bot["last_cycles"][symbol] = cycle_key
+        bot["last_cycles"][symbol] = f"{symbol}:{quote['date']}"
         if signal == "SELL" and position:
             quantity = position["quantity"]
             amount = quantity * quote["price_twd"]
@@ -123,7 +175,7 @@ def _trade_bot(
             continue
         if _signal(bot_id, quote, symbol in positions) != "BUY":
             continue
-        budget = bot["cash_twd"] * allocation
+        budget = bot["cash_twd"] * config["allocation"]
         quantity = int(budget / quote["price_twd"])
         if quantity <= 0:
             continue
@@ -145,6 +197,20 @@ def _trade_bot(
         _record_trade(bot_id, bot, symbol, quote, "BUY", quantity, amount, now, "signal")
         if bot_id != "aggressive":
             break
+
+
+def _is_allowed(market_scope: str, quote: dict[str, Any]) -> bool:
+    if quote["asset_type"] != AssetType.STOCK.value:
+        return False
+    institution = quote["institution"]
+    if market_scope == "US_STOCKS":
+        return institution == Institution.FIRSTRADE.value
+    if market_scope == "TW_STOCKS":
+        return institution == Institution.SINOPAC_SECURITIES.value
+    return institution in {
+        Institution.FIRSTRADE.value,
+        Institution.SINOPAC_SECURITIES.value,
+    }
 
 
 def _signal(bot_id: str, quote: dict[str, Any], holding: bool) -> str:
@@ -203,8 +269,8 @@ def _to_response(
     now: datetime,
 ) -> PaperTradingResponse:
     summaries = []
-    for bot_id, name, strategy, _ in BOT_CONFIGS:
-        bot = state["bots"][bot_id]
+    for config in BOT_CONFIGS:
+        bot = state["bots"][config["id"]]
         position_models = []
         position_value = 0.0
         for symbol, position in bot["positions"].items():
@@ -230,9 +296,10 @@ def _to_response(
         initial = state["initial_cash_twd"]
         summaries.append(
             PaperBotSummary(
-                id=bot_id,
-                name=name,
-                strategy=strategy,
+                id=config["id"],
+                name=config["name"],
+                strategy=config["strategy"],
+                market_scope=config["market_scope"],
                 initial_cash_twd=initial,
                 cash_twd=bot["cash_twd"],
                 net_value_twd=net_value,
@@ -243,15 +310,76 @@ def _to_response(
                 positions=position_models,
                 recent_trades=[
                     PaperBotTrade.model_validate(item)
-                    for item in reversed(bot["trades"][-20:])
+                    for item in reversed(bot["trades"][-500:])
                 ],
                 equity_history=[
                     PaperBotEquityPoint.model_validate(item)
                     for item in bot["equity_history"][-365:]
                 ],
+                performance_history=_build_performance_history(state, bot),
             )
         )
     return PaperTradingResponse(generated_at=now, bots=summaries)
+
+
+def _build_performance_history(
+    state: dict[str, Any],
+    bot: dict[str, Any],
+) -> list[PaperBotPerformancePoint]:
+    equity = bot["equity_history"][-365:]
+    if not equity:
+        return []
+    initial_cash = state["initial_cash_twd"]
+    benchmarks = state.get("benchmarks", {})
+    tw_points = benchmarks.get("taiwan", [])
+    us_points = benchmarks.get("us", [])
+    first_date = equity[0]["timestamp"][:10]
+    tw_base = _benchmark_close(tw_points, first_date)
+    us_base = _benchmark_close(us_points, first_date)
+    result = []
+    for point in equity:
+        day = point["timestamp"][:10]
+        tw_close = _benchmark_close(tw_points, day)
+        us_close = _benchmark_close(us_points, day)
+        result.append(
+            PaperBotPerformancePoint(
+                timestamp=point["timestamp"],
+                bot_value_twd=point["net_value_twd"],
+                taiwan_index_value=(
+                    initial_cash * tw_close / tw_base
+                    if tw_close is not None and tw_base
+                    else None
+                ),
+                us_index_value=(
+                    initial_cash * us_close / us_base
+                    if us_close is not None and us_base
+                    else None
+                ),
+            )
+        )
+    return result
+
+
+def _benchmark_close(points: list[dict[str, Any]], day: str) -> float | None:
+    eligible = [point["close"] for point in points if point["date"] <= day]
+    return eligible[-1] if eligible else None
+
+
+def _load_benchmarks(
+    settings: Settings,
+    existing: dict[str, Any],
+) -> dict[str, Any]:
+    result = dict(existing)
+    for key, symbol in (("taiwan", "^TWII"), ("us", "^GSPC")):
+        try:
+            history = load_benchmark_history(settings, symbol, 365)
+        except (OSError, RuntimeError, ValueError, KeyError):
+            continue
+        result[key] = [
+            {"date": candle.date, "close": candle.close}
+            for candle in history.candles
+        ]
+    return result
 
 
 def _load_state(path: Path, initial_cash: float) -> dict[str, Any]:
@@ -261,19 +389,21 @@ def _load_state(path: Path, initial_cash: float) -> dict[str, Any]:
         state = {
             "paper_only": True,
             "initial_cash_twd": initial_cash,
+            "benchmarks": {},
             "bots": {
-                bot_id: {
+                config["id"]: {
                     "cash_twd": initial_cash,
                     "positions": {},
                     "trades": [],
                     "last_cycles": {},
                     "equity_history": [],
                 }
-                for bot_id, *_ in BOT_CONFIGS
+                for config in BOT_CONFIGS
             },
         }
-    for bot_id, *_ in BOT_CONFIGS:
-        bot = state["bots"][bot_id]
+    state.setdefault("benchmarks", {})
+    for config in BOT_CONFIGS:
+        bot = state["bots"][config["id"]]
         bot.setdefault("equity_history", [])
         bot.setdefault("last_cycles", {})
     return state

@@ -21,6 +21,7 @@ import tw.kensuke.assetscope.domain.model.PaperBotPosition
 import tw.kensuke.assetscope.domain.model.PaperBotTrade
 import tw.kensuke.assetscope.domain.model.PaperBotEquityPoint
 import tw.kensuke.assetscope.domain.model.PaperTradingDashboard
+import tw.kensuke.assetscope.domain.model.PaperBotPerformancePoint
 import tw.kensuke.assetscope.domain.model.Transaction
 import tw.kensuke.assetscope.domain.model.TransactionType
 import java.net.HttpURLConnection
@@ -333,10 +334,12 @@ class PortfolioApiClient {
                 val positions = bot.getJSONArray("positions")
                 val trades = bot.getJSONArray("recent_trades")
                 val equity = bot.getJSONArray("equity_history")
+                val performance = bot.getJSONArray("performance_history")
                 PaperBot(
                     id = bot.getString("id"),
                     name = bot.getString("name"),
                     strategy = bot.getString("strategy"),
+                    marketScope = bot.getString("market_scope"),
                     paperOnly = bot.getBoolean("paper_only"),
                     initialCashTwd = bot.getDouble("initial_cash_twd"),
                     cashTwd = bot.getDouble("cash_twd"),
@@ -380,6 +383,22 @@ class PortfolioApiClient {
                             PaperBotEquityPoint(
                                 timestamp = it.getString("timestamp"),
                                 netValueTwd = it.getDouble("net_value_twd"),
+                            )
+                        }
+                    },
+                    performanceHistory = List(performance.length()) { performanceIndex ->
+                        performance.getJSONObject(performanceIndex).let {
+                            PaperBotPerformancePoint(
+                                timestamp = it.getString("timestamp"),
+                                botValueTwd = it.getDouble("bot_value_twd"),
+                                taiwanIndexValue = it.optDouble(
+                                    "taiwan_index_value",
+                                    Double.NaN,
+                                ).takeUnless(Double::isNaN),
+                                usIndexValue = it.optDouble(
+                                    "us_index_value",
+                                    Double.NaN,
+                                ).takeUnless(Double::isNaN),
                             )
                         }
                     },

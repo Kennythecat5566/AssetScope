@@ -188,10 +188,18 @@ class PaperBotEquityPoint(BaseModel):
     net_value_twd: float = Field(ge=0)
 
 
+class PaperBotPerformancePoint(BaseModel):
+    timestamp: datetime
+    bot_value_twd: float = Field(ge=0)
+    taiwan_index_value: float | None = Field(default=None, ge=0)
+    us_index_value: float | None = Field(default=None, ge=0)
+
+
 class PaperBotSummary(BaseModel):
     id: str
     name: str
     strategy: str
+    market_scope: str
     paper_only: bool = True
     initial_cash_twd: float
     cash_twd: float
@@ -203,6 +211,7 @@ class PaperBotSummary(BaseModel):
     positions: list[PaperBotPosition] = []
     recent_trades: list[PaperBotTrade] = []
     equity_history: list[PaperBotEquityPoint] = []
+    performance_history: list[PaperBotPerformancePoint] = []
 
 
 class PaperTradingResponse(BaseModel):

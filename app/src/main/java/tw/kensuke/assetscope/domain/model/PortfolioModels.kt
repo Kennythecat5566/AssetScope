@@ -187,10 +187,18 @@ data class PaperBotEquityPoint(
     val netValueTwd: Double,
 )
 
+data class PaperBotPerformancePoint(
+    val timestamp: String,
+    val botValueTwd: Double,
+    val taiwanIndexValue: Double?,
+    val usIndexValue: Double?,
+)
+
 data class PaperBot(
     val id: String,
     val name: String,
     val strategy: String,
+    val marketScope: String,
     val paperOnly: Boolean,
     val initialCashTwd: Double,
     val cashTwd: Double,
@@ -202,6 +210,7 @@ data class PaperBot(
     val positions: List<PaperBotPosition>,
     val recentTrades: List<PaperBotTrade>,
     val equityHistory: List<PaperBotEquityPoint>,
+    val performanceHistory: List<PaperBotPerformancePoint>,
 )
 
 data class PaperTradingDashboard(
