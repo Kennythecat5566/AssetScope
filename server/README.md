@@ -14,13 +14,15 @@ Or run it from PowerShell:
 .\start-assetscope-server.cmd
 ```
 
-On the first run it creates the Python virtual environment, installs dependencies,
-creates `server/.env`, and generates a secure API Token. Later runs reuse the
-existing environment and configuration. The window also prints the private LAN
-URL to enter in the Android App.
+The launcher starts Tailscale VPN first and then starts AssetScope Server. On the
+first run it installs/configures Tailscale with an administrator prompt, creates
+the Python virtual environment, installs dependencies, creates `server/.env`,
+and generates a secure API Token. Later runs reuse the existing login,
+environment, and configuration.
 
-If the phone cannot connect, run `server\allow-firewall.cmd` once as
-Administrator.
+The window prints both the Tailscale remote URL and the home Wi-Fi URL to enter
+in the Android App. The phone must also have Tailscale enabled when connecting
+from outside the home network.
 
 Read-only personal asset API that runs on the Windows PC and serves normalized
 portfolio data to the Android app.
