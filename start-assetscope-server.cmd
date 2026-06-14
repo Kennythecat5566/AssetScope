@@ -10,4 +10,3 @@ if errorlevel 1 (
   echo AssetScope Server failed to start.
   pause
 )
-
