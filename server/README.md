@@ -1,5 +1,27 @@
 # AssetScope Server
 
+## One-click startup
+
+From the project root, double-click:
+
+```text
+start-assetscope-server.cmd
+```
+
+Or run it from PowerShell:
+
+```powershell
+.\start-assetscope-server.cmd
+```
+
+On the first run it creates the Python virtual environment, installs dependencies,
+creates `server/.env`, and generates a secure API Token. Later runs reuse the
+existing environment and configuration. The window also prints the private LAN
+URL to enter in the Android App.
+
+If the phone cannot connect, run `server\allow-firewall.cmd` once as
+Administrator.
+
 Read-only personal asset API that runs on the Windows PC and serves normalized
 portfolio data to the Android app.
 
