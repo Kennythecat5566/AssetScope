@@ -160,6 +160,66 @@ The Playwright-based `capture-firstrade.cmd` remains available for sites that
 accept a dedicated browser profile, but the normal-browser workflow is the
 recommended Firstrade option.
 
+## Firstrade API Connector
+
+AssetScope can also read Firstrade holdings through the local API wrapper in:
+
+```text
+D:\AppDev\firstrade-api-main
+```
+
+This wrapper is not an official Firstrade API. It uses reverse-engineered
+Firstrade web API requests, so it may break when Firstrade changes login,
+MFA, device verification, or response formats. AssetScope uses it only for
+read-only account data: holdings, cash balance, and available account history.
+It does not call stock or option order endpoints.
+
+First authorize Firstrade from the computer:
+
+```powershell
+cd D:\AppDev\server
+.\authorize-firstrade-api.cmd
+```
+
+The script asks for your Firstrade username and password one time, then handles
+MFA. Credentials are passed only to that PowerShell/Python process and are not
+written to `server\.env`. On success, the script saves a local session token to:
+
+```text
+server\data\raw\firstrade-api\session.json
+```
+
+That folder is excluded from Git. The script also enables the connector in
+`.env`:
+
+```text
+ASSETSCOPE_FIRSTRADE_API_ENABLED=true
+ASSETSCOPE_FIRSTRADE_API_PATH=../firstrade-api-main
+ASSETSCOPE_FIRSTRADE_API_TOKEN_FILE=data/raw/firstrade-api/session.json
+ASSETSCOPE_FIRSTRADE_API_ACCOUNT=
+ASSETSCOPE_FIRSTRADE_API_HISTORY_RANGE=ytd
+```
+
+Then restart the server:
+
+```powershell
+.\start.cmd
+```
+
+or from the project root:
+
+```powershell
+.\start-assetscope-server.cmd
+```
+
+When Firstrade API holdings are available, AssetScope prefers them over the old
+Firstrade CSV holdings to avoid duplicated assets. Firstrade CSV transaction
+history remains useful as a fallback or for longer historical records that the
+API endpoint may not return.
+
+If the session expires, run `authorize-firstrade-api.cmd` again. Do not store
+your Firstrade password in `.env`, commit it to Git, or send it in chat.
+
 ## Shioaji
 
 Install the optional package:

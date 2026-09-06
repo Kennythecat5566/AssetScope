@@ -24,6 +24,10 @@ shioaji = [
 browser = [
     "playwright>=1.52,<2",
 ]
+firstrade = [
+    "pyotp>=2.9,<3",
+    "requests>=2.32,<3",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

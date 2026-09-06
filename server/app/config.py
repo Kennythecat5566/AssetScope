@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     shioaji_api_key: str = ""
     shioaji_secret_key: str = ""
     shioaji_history_days: int = Field(default=365, ge=30, le=730)
+    firstrade_api_enabled: bool = False
+    firstrade_api_path: Path = Path("../firstrade-api-main")
+    firstrade_api_token_file: Path = Path("data/raw/firstrade-api/session.json")
+    firstrade_api_account: str = ""
+    firstrade_api_history_range: str = "ytd"
     paper_trading_enabled: bool = True
     paper_trading_interval_minutes: int = Field(default=60, ge=15, le=1440)
     paper_trading_initial_cash_twd: float = Field(default=1_000_000, gt=0)
