@@ -5,6 +5,7 @@ from app.connectors.csv_folder import load_csv_folder
 from app.connectors.exchange_rates import load_exchange_rates
 from app.connectors.firstrade_api import load_firstrade_api_data
 from app.connectors.firstrade_history import load_firstrade_activity
+from app.connectors.gmail_card import load_gmail_card_expenses
 from app.connectors.shioaji import load_shioaji_data
 from app.connectors.sinopac_card import load_sinopac_card_expenses
 from app.models import Institution, PerformanceSummary, PortfolioResponse
@@ -40,7 +41,14 @@ def build_portfolio(settings: Settings) -> PortfolioResponse:
         firstrade_transactions = firstrade_api_data.transactions
         performance = PerformanceSummary()
     expenses, expense_sources = load_sinopac_card_expenses(settings.import_dir)
+    gmail_expenses, gmail_sources = load_gmail_card_expenses(settings)
+    expenses = sorted(
+        [*expenses, *gmail_expenses],
+        key=lambda item: item.transaction_date,
+        reverse=True,
+    )
     sources.extend(expense_sources)
+    sources.extend(gmail_sources)
     transactions = sorted(
         [*firstrade_transactions, *shioaji_data.transactions],
         key=lambda item: item.trade_date,

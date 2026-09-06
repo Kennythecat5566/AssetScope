@@ -112,6 +112,94 @@ SinoPac does not guarantee that every personal credit-card page offers CSV.
 If a page provides only PDF, use the official CSV option on another statement
 or continue with the manual template until PDF parsing is added.
 
+## Gmail Credit-Card Notifications
+
+AssetScope can read credit-card notification emails from Gmail and merge them
+into the same expense analysis shown in the Android app. This uses the official
+Gmail API with the read-only scope:
+
+```text
+https://www.googleapis.com/auth/gmail.readonly
+```
+
+The importer does not ask for your Gmail password and does not delete, send,
+archive, or modify email. It only searches matching messages and parses likely
+credit-card spending notifications.
+
+### Google setup
+
+1. Open Google Cloud Console.
+2. Create or select a personal project.
+3. Enable Gmail API.
+4. Configure the OAuth consent screen for personal/testing use.
+5. Create an OAuth Client ID.
+6. Choose application type `Desktop app`.
+7. Download the OAuth client JSON.
+8. Save it as:
+
+```text
+D:\AppDev\server\google-oauth-client.json
+```
+
+The file is ignored by Git.
+
+Official references:
+
+- <https://developers.google.com/workspace/gmail/api/quickstart/python>
+- <https://developers.google.com/workspace/gmail/api/auth/scopes>
+- <https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/list>
+- <https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages/get>
+
+### Authorize Gmail
+
+Run:
+
+```powershell
+cd D:\AppDev\server
+.\authorize-gmail.cmd
+```
+
+The browser opens a Google OAuth screen. Choose your Gmail account and approve
+the read-only Gmail permission. On success, the token is saved to:
+
+```text
+server\data\raw\gmail\token.json
+```
+
+That folder is ignored by Git. The script also enables the connector in `.env`:
+
+```text
+ASSETSCOPE_GMAIL_EXPENSES_ENABLED=true
+ASSETSCOPE_GMAIL_CREDENTIALS_FILE=google-oauth-client.json
+ASSETSCOPE_GMAIL_TOKEN_FILE=data/raw/gmail/token.json
+ASSETSCOPE_GMAIL_QUERY=newer_than:180d (信用卡 OR 刷卡 OR 消費 OR "card transaction" OR "credit card")
+ASSETSCOPE_GMAIL_MAX_MESSAGES=100
+```
+
+Restart the server, then sync the Android app:
+
+```powershell
+.\start.cmd
+```
+
+No Android app update is required because Gmail expenses are returned through
+the existing `/api/v1/portfolio` response.
+
+### Adjust the Gmail search
+
+The query uses the same search syntax as the Gmail search box. To reduce noise,
+you can edit `ASSETSCOPE_GMAIL_QUERY` in `.env`, for example:
+
+```text
+ASSETSCOPE_GMAIL_QUERY=newer_than:180d from:(bank.example.com) (信用卡 OR 刷卡 OR 消費)
+```
+
+Start broad first, confirm expenses appear, then narrow the sender/subject.
+The parser currently recognizes common Chinese and English patterns for date,
+merchant, amount, and card last four digits. If your bank uses a different
+template, keep one redacted sample email body and add parser rules in
+`app/connectors/gmail_card.py`.
+
 ## Browser-Assisted Firstrade Export
 
 Firstrade may reject an automated browser as a new or suspicious device. If

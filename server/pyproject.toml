@@ -28,6 +28,11 @@ firstrade = [
     "pyotp>=2.9,<3",
     "requests>=2.32,<3",
 ]
+gmail = [
+    "google-api-python-client>=2.150,<3",
+    "google-auth-httplib2>=0.2,<1",
+    "google-auth-oauthlib>=1.2,<2",
+]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

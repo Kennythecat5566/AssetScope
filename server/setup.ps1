@@ -6,7 +6,7 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
     python -m venv .venv
 }
 
-& ".venv\Scripts\python.exe" -m pip install -e ".[dev,browser,firstrade]"
+& ".venv\Scripts\python.exe" -m pip install -e ".[dev,browser,firstrade,gmail]"
 
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"

@@ -91,7 +91,10 @@ def test_loads_firstrade_api_assets_and_transactions(tmp_path: Path) -> None:
 
 
 def test_firstrade_api_is_disabled_by_default() -> None:
-    settings = Settings(api_token="a-long-enough-test-token")
+    settings = Settings(
+        api_token="a-long-enough-test-token",
+        firstrade_api_enabled=False,
+    )
 
     data = load_firstrade_api_data(settings)
 

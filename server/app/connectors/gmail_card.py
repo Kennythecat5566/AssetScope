@@ -1,0 +1,292 @@
+import base64
+import hashlib
+import re
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
+from pathlib import Path
+from typing import Any, Protocol
+
+from app.config import Settings
+from app.connectors.sinopac_card import _category
+from app.models import Currency, Expense, ExpenseCategory, Institution
+
+GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
+
+
+@dataclass
+class ParsedCardNotification:
+    message_id: str
+    transaction_date: str
+    merchant: str
+    amount: float
+    currency: Currency
+    card_last_four: str = ""
+    note: str = ""
+
+
+class GmailServiceProtocol(Protocol):
+    def users(self) -> Any: ...
+
+
+def load_gmail_card_expenses(
+    settings: Settings,
+    service: GmailServiceProtocol | None = None,
+) -> tuple[list[Expense], list[str]]:
+    if not settings.gmail_expenses_enabled:
+        return [], []
+
+    if service is None:
+        service = _build_gmail_service(settings)
+
+    messages = _list_messages(service, settings.gmail_query, settings.gmail_max_messages)
+    expenses = [
+        _to_expense(parsed)
+        for parsed in (
+            parse_card_notification(_get_message(service, message["id"]))
+            for message in messages
+            if "id" in message
+        )
+        if parsed is not None
+    ]
+    return (
+        sorted(expenses, key=lambda item: item.transaction_date, reverse=True),
+        ["gmail-card-notifications"] if expenses else [],
+    )
+
+
+def parse_card_notification(message: dict[str, Any]) -> ParsedCardNotification | None:
+    message_id = str(message.get("id") or "")
+    text = _message_text(message)
+    if not _looks_like_card_notification(text):
+        return None
+
+    amount, currency = _extract_amount(text)
+    if amount <= 0:
+        return None
+
+    merchant = _extract_merchant(text) or "Credit card notification"
+    transaction_date = _extract_date(text) or _message_date(message)
+    card_last_four = _extract_card_last_four(text)
+    note = _header(message, "From")
+
+    return ParsedCardNotification(
+        message_id=message_id,
+        transaction_date=transaction_date,
+        merchant=merchant[:120],
+        amount=amount,
+        currency=currency,
+        card_last_four=card_last_four,
+        note=note[:160],
+    )
+
+
+def _build_gmail_service(settings: Settings) -> GmailServiceProtocol:
+    token_file = _resolve_server_path(settings.gmail_token_file)
+    if not token_file.exists():
+        raise RuntimeError("Gmail token is missing. Run authorize-gmail.cmd first.")
+
+    try:
+        from google.auth.transport.requests import Request
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
+    except ImportError as error:
+        raise RuntimeError(
+            "Install Gmail dependencies with: pip install -e .[gmail]"
+        ) from error
+
+    credentials = Credentials.from_authorized_user_file(
+        str(token_file),
+        [GMAIL_READONLY_SCOPE],
+    )
+    if credentials.expired and credentials.refresh_token:
+        credentials.refresh(Request())
+        token_file.write_text(credentials.to_json(), encoding="utf-8")
+    if not credentials.valid:
+        raise RuntimeError("Gmail token is invalid. Run authorize-gmail.cmd again.")
+    return build("gmail", "v1", credentials=credentials, cache_discovery=False)
+
+
+def _list_messages(
+    service: GmailServiceProtocol,
+    query: str,
+    max_messages: int,
+) -> list[dict[str, str]]:
+    result: list[dict[str, str]] = []
+    request = (
+        service.users()
+        .messages()
+        .list(userId="me", q=query, maxResults=min(max_messages, 100))
+    )
+    while request is not None and len(result) < max_messages:
+        response = request.execute()
+        result.extend(response.get("messages", []))
+        if len(result) >= max_messages:
+            break
+        request = service.users().messages().list_next(request, response)
+    return result[:max_messages]
+
+
+def _get_message(service: GmailServiceProtocol, message_id: str) -> dict[str, Any]:
+    return (
+        service.users()
+        .messages()
+        .get(userId="me", id=message_id, format="full")
+        .execute()
+    )
+
+
+def _to_expense(parsed: ParsedCardNotification) -> Expense:
+    stable_key = "|".join(
+        [
+            "gmail-card",
+            parsed.message_id,
+            parsed.transaction_date,
+            parsed.merchant,
+            str(parsed.amount),
+        ]
+    )
+    return Expense(
+        id=hashlib.sha256(stable_key.encode()).hexdigest()[:24],
+        institution=Institution.SINOPAC_BANK,
+        transaction_date=parsed.transaction_date,
+        posted_date=None,
+        merchant=parsed.merchant,
+        category=_category("", parsed.merchant),
+        amount=parsed.amount,
+        currency=parsed.currency,
+        card_last_four=parsed.card_last_four,
+        note=parsed.note,
+    )
+
+
+def _message_text(message: dict[str, Any]) -> str:
+    payload = message.get("payload")
+    parts = []
+    if isinstance(payload, dict):
+        parts.extend(_payload_text(payload))
+    snippet = message.get("snippet")
+    if isinstance(snippet, str):
+        parts.append(snippet)
+    return "\n".join(part for part in parts if part)
+
+
+def _payload_text(payload: dict[str, Any]) -> list[str]:
+    result: list[str] = []
+    mime_type = str(payload.get("mimeType") or "")
+    body = payload.get("body")
+    if mime_type.startswith("text/") and isinstance(body, dict):
+        data = body.get("data")
+        if isinstance(data, str):
+            result.append(_decode_base64url(data))
+
+    for part in payload.get("parts", []) or []:
+        if isinstance(part, dict):
+            result.extend(_payload_text(part))
+    return result
+
+
+def _decode_base64url(value: str) -> str:
+    padded = value + "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(padded.encode()).decode(
+        "utf-8",
+        errors="ignore",
+    )
+
+
+def _looks_like_card_notification(text: str) -> bool:
+    normalized = text.lower()
+    return any(
+        keyword in normalized
+        for keyword in (
+            "信用卡",
+            "刷卡",
+            "消費",
+            "交易通知",
+            "card",
+            "credit",
+            "transaction",
+        )
+    )
+
+
+def _extract_amount(text: str) -> tuple[float, Currency]:
+    patterns = [
+        (Currency.TWD, r"(?:NT\$|NTD|TWD|新台幣|新臺幣)\s*([\d,]+(?:\.\d+)?)"),
+        (Currency.USD, r"(?:US\$|USD|\$)\s*([\d,]+(?:\.\d+)?)"),
+        (Currency.TWD, r"([\d,]+(?:\.\d+)?)\s*元"),
+        (Currency.TWD, r"(?:金額|消費金額|交易金額)[:：\s]*(?:NT\$|NTD|TWD)?\s*([\d,]+(?:\.\d+)?)"),
+    ]
+    for currency, pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return float(match.group(1).replace(",", "")), currency
+    return 0, Currency.TWD
+
+
+def _extract_merchant(text: str) -> str:
+    patterns = [
+        r"(?:商店|特店|店家|消費地點|交易店家|Merchant)[:：]\s*([^\n\r，,。;；]+)",
+        r"(?:於|在)\s*([A-Za-z0-9\u4e00-\u9fff ._\-&]+?)\s*(?:消費|刷卡|交易)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return " ".join(match.group(1).split())
+    return ""
+
+
+def _extract_date(text: str) -> str | None:
+    patterns = [
+        r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})",
+        r"(\d{2,3})[/-](\d{1,2})[/-](\d{1,2})",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if not match:
+            continue
+        year, month, day = map(int, match.groups())
+        if year < 1911:
+            year += 1911
+        return datetime(year, month, day).date().isoformat()
+    return None
+
+
+def _message_date(message: dict[str, Any]) -> str:
+    internal_date = message.get("internalDate")
+    if internal_date:
+        try:
+            timestamp = int(str(internal_date)) / 1000
+            return datetime.fromtimestamp(timestamp, UTC).date().isoformat()
+        except ValueError:
+            pass
+    header_date = _header(message, "Date")
+    if header_date:
+        try:
+            return parsedate_to_datetime(header_date).date().isoformat()
+        except (TypeError, ValueError):
+            pass
+    return datetime.now(UTC).date().isoformat()
+
+
+def _extract_card_last_four(text: str) -> str:
+    match = re.search(
+        r"(?:尾號|末四碼|卡號|last\s*four|ending).{0,12}?(\d{4})",
+        text,
+        re.IGNORECASE,
+    )
+    return match.group(1) if match else ""
+
+
+def _header(message: dict[str, Any], name: str) -> str:
+    headers = (message.get("payload") or {}).get("headers", [])
+    for header in headers:
+        if isinstance(header, dict) and header.get("name", "").lower() == name.lower():
+            return str(header.get("value") or "")
+    return ""
+
+
+def _resolve_server_path(path: Path) -> Path:
+    if path.is_absolute():
+        return path
+    return (Path(__file__).resolve().parents[2] / path).resolve()

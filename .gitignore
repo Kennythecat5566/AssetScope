@@ -25,3 +25,5 @@ __pycache__/
 *.egg-info/
 shioaji.log
 /api_key.txt
+server/google-oauth-client.json
+server/client_secret*.json
