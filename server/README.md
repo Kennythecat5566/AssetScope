@@ -189,6 +189,8 @@ For MFA, choose `1=manual code` unless you already have a Firstrade TOTP secret.
 Do not enter your trading PIN as `PIN MFA`; that option is only for accounts
 where Firstrade explicitly uses a PIN during login MFA. If you see `Bad Request`
 after choosing PIN, rerun the script and choose manual code.
+If Firstrade requires selecting where to send a code, rerun the script and
+choose `3=email code` or `4=SMS code`.
 
 ```text
 server\data\raw\firstrade-api\session.json

@@ -86,6 +86,7 @@ switch ($MfaMethod.Trim()) {
 
 $env:ASSETSCOPE_FIRSTRADE_API_USERNAME = $Username
 $env:ASSETSCOPE_FIRSTRADE_API_PASSWORD = ConvertFrom-SecureStringToPlainText $PasswordSecure
+$env:ASSETSCOPE_FIRSTRADE_API_MFA_METHOD = $MfaMethod.Trim()
 $env:ASSETSCOPE_FIRSTRADE_API_MFA_SECRET = ConvertFrom-SecureStringToPlainText $MfaSecretSecure
 $env:ASSETSCOPE_FIRSTRADE_API_EMAIL = $Email
 $env:ASSETSCOPE_FIRSTRADE_API_PHONE = $Phone
@@ -100,6 +101,7 @@ try {
 finally {
     Remove-Item Env:\ASSETSCOPE_FIRSTRADE_API_USERNAME -ErrorAction SilentlyContinue
     Remove-Item Env:\ASSETSCOPE_FIRSTRADE_API_PASSWORD -ErrorAction SilentlyContinue
+    Remove-Item Env:\ASSETSCOPE_FIRSTRADE_API_MFA_METHOD -ErrorAction SilentlyContinue
     Remove-Item Env:\ASSETSCOPE_FIRSTRADE_API_MFA_SECRET -ErrorAction SilentlyContinue
     Remove-Item Env:\ASSETSCOPE_FIRSTRADE_API_EMAIL -ErrorAction SilentlyContinue
     Remove-Item Env:\ASSETSCOPE_FIRSTRADE_API_PHONE -ErrorAction SilentlyContinue

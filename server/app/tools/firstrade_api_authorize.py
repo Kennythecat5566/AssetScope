@@ -13,6 +13,7 @@ def main() -> int:
     email = os.environ.get("ASSETSCOPE_FIRSTRADE_API_EMAIL", "")
     phone = os.environ.get("ASSETSCOPE_FIRSTRADE_API_PHONE", "")
     mfa_secret = os.environ.get("ASSETSCOPE_FIRSTRADE_API_MFA_SECRET", "")
+    mfa_method = os.environ.get("ASSETSCOPE_FIRSTRADE_API_MFA_METHOD", "1")
 
     if not username or not password:
         print("Firstrade username and password are required for authorization.")
@@ -37,8 +38,16 @@ def main() -> int:
         need_code = session.login()
     except Exception as error:
         print(f"Firstrade login failed: {error}")
-        print("If you entered PIN MFA, retry with MFA method 1 (manual code).")
-        print("PIN is only for accounts that explicitly use PIN during login MFA.")
+        if mfa_method == "1":
+            print(
+                "If Firstrade requires selecting where to send a code, rerun "
+                "this command and choose MFA method 3=email or 4=SMS."
+            )
+        elif mfa_method == "5":
+            print("Retry with MFA method 1 unless your account explicitly uses PIN login MFA.")
+            print("Do not enter your trading PIN as a fallback MFA method.")
+        else:
+            print("Check that the selected MFA method matches your Firstrade login settings.")
         return 1
 
     if need_code:
