@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     gmail_query: str = (
         'newer_than:180d (信用卡 OR 刷卡 OR 消費 OR "card transaction" OR "credit card")'
     )
-    gmail_max_messages: int = Field(default=100, ge=1, le=500)
+    gmail_max_messages: int = Field(default=25, ge=1, le=500)
     paper_trading_enabled: bool = True
     paper_trading_interval_minutes: int = Field(default=60, ge=15, le=1440)
     paper_trading_initial_cash_twd: float = Field(default=1_000_000, gt=0)

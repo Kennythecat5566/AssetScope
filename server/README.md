@@ -173,7 +173,7 @@ ASSETSCOPE_GMAIL_EXPENSES_ENABLED=true
 ASSETSCOPE_GMAIL_CREDENTIALS_FILE=google-oauth-client.json
 ASSETSCOPE_GMAIL_TOKEN_FILE=data/raw/gmail/token.json
 ASSETSCOPE_GMAIL_QUERY=newer_than:180d (信用卡 OR 刷卡 OR 消費 OR "card transaction" OR "credit card")
-ASSETSCOPE_GMAIL_MAX_MESSAGES=100
+ASSETSCOPE_GMAIL_MAX_MESSAGES=25
 ```
 
 Restart the server, then sync the Android app:
