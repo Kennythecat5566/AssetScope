@@ -200,6 +200,27 @@ merchant, amount, and card last four digits. If your bank uses a different
 template, keep one redacted sample email body and add parser rules in
 `app/connectors/gmail_card.py`.
 
+## SinoPac Encrypted Card PDF From Email
+
+Some SinoPac credit-card notifications include an encrypted PDF attachment
+instead of a CSV. Save the `.eml` file from Gmail or your mail client, then run:
+
+```powershell
+cd D:\AppDev\server
+.\import-sinopac-card-eml.cmd "C:\Users\Kenny\Downloads\永豐銀行信用卡 08月29日 消費通知.eml"
+```
+
+The script asks for the PDF password in the local PowerShell window. The
+password is kept only in process memory for that import and is not written to
+Git. A parsed CSV is saved under:
+
+```text
+server\data\imports\sinopac-card-eml-*.csv
+```
+
+Restart the server and sync the Android app. The imported spending appears in
+the existing expense analysis.
+
 ## Browser-Assisted Firstrade Export
 
 Firstrade may reject an automated browser as a new or suspicious device. If
