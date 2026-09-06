@@ -847,7 +847,7 @@ private fun buildExpensePageData(
     usdToTwd: Double,
 ): ExpensePageData {
     val latestMonth = expenses.maxOfOrNull { it.transactionDate.take(7) }
-    val monthlyExpenses = expenses.filter { it.transactionDate.startsWith(latestMonth.orEmpty()) }
+    val monthlyExpenses = expenses.sortedByDescending { it.transactionDate }
     val totalTwd = monthlyExpenses.sumOf { expense ->
         expense.amount * if (expense.currency == Currency.USD) usdToTwd else 1.0
     }
