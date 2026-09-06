@@ -200,6 +200,35 @@ merchant, amount, and card last four digits. If your bank uses a different
 template, keep one redacted sample email body and add parser rules in
 `app/connectors/gmail_card.py`.
 
+### Encrypted PDF attachments
+
+If a Gmail credit-card notification contains an encrypted SinoPac PDF
+attachment, AssetScope can download the attachment with the Gmail API, decrypt
+it locally, and merge the parsed spending into the same expense analysis.
+
+Set the PDF password once:
+
+```powershell
+cd D:\AppDev\server
+.\configure-sinopac-card-pdf-password.cmd
+```
+
+This writes the following local-only values to `server\.env`:
+
+```text
+ASSETSCOPE_GMAIL_PDF_ATTACHMENTS_ENABLED=true
+ASSETSCOPE_SINOPAC_CARD_PDF_PASSWORD=your-local-password
+```
+
+`server\.env` is ignored by Git. After saving the password, restart the server:
+
+```powershell
+cd D:\AppDev
+.\start-assetscope-server.cmd
+```
+
+Then sync the Android app. No app update is required.
+
 ## SinoPac Encrypted Card PDF From Email
 
 Some SinoPac credit-card notifications include an encrypted PDF attachment

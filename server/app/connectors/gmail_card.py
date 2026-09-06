@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 from app.config import Settings
 from app.connectors.sinopac_card import _category
+from app.connectors.sinopac_card_pdf import extract_pdf_text, parse_sinopac_card_pdf_text
 from app.models import Currency, Expense, ExpenseCategory, Institution
 
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
@@ -40,15 +41,13 @@ def load_gmail_card_expenses(
         service = _build_gmail_service(settings)
 
     messages = _list_messages(service, settings.gmail_query, settings.gmail_max_messages)
-    expenses = [
-        _to_expense(parsed)
-        for parsed in (
-            parse_card_notification(_get_message(service, message["id"]))
-            for message in messages
-            if "id" in message
-        )
-        if parsed is not None
-    ]
+    expenses: list[Expense] = []
+    for message_ref in messages:
+        message_id = message_ref.get("id")
+        if not message_id:
+            continue
+        message = _get_message(service, message_id)
+        expenses.extend(_expenses_from_message(settings, service, message))
     return (
         sorted(expenses, key=lambda item: item.transaction_date, reverse=True),
         ["gmail-card-notifications"] if expenses else [],
@@ -79,6 +78,21 @@ def parse_card_notification(message: dict[str, Any]) -> ParsedCardNotification |
         card_last_four=card_last_four,
         note=note[:160],
     )
+
+
+def _expenses_from_message(
+    settings: Settings,
+    service: GmailServiceProtocol,
+    message: dict[str, Any],
+) -> list[Expense]:
+    expenses: list[Expense] = []
+    parsed = parse_card_notification(message)
+    if parsed is not None:
+        expenses.append(_to_expense(parsed))
+
+    if settings.gmail_pdf_attachments_enabled:
+        expenses.extend(_pdf_attachment_expenses(settings, service, message))
+    return expenses
 
 
 def _build_gmail_service(settings: Settings) -> GmailServiceProtocol:
@@ -136,6 +150,106 @@ def _get_message(service: GmailServiceProtocol, message_id: str) -> dict[str, An
     )
 
 
+def _get_attachment(
+    service: GmailServiceProtocol,
+    message_id: str,
+    attachment_id: str,
+) -> bytes:
+    response = (
+        service.users()
+        .messages()
+        .attachments()
+        .get(userId="me", messageId=message_id, id=attachment_id)
+        .execute()
+    )
+    data = response.get("data")
+    if not isinstance(data, str):
+        return b""
+    return _decode_base64url_bytes(data)
+
+
+def _pdf_attachment_expenses(
+    settings: Settings,
+    service: GmailServiceProtocol,
+    message: dict[str, Any],
+) -> list[Expense]:
+    message_id = str(message.get("id") or "")
+    result: list[Expense] = []
+    for filename, payload in _pdf_attachment_payloads(service, message):
+        try:
+            text = extract_pdf_text(payload, settings.sinopac_card_pdf_password)
+            expenses = parse_sinopac_card_pdf_text(text, f"gmail:{message_id}:{filename}")
+        except ValueError:
+            continue
+        for expense in expenses:
+            result.append(
+                expense.model_copy(
+                    update={
+                        "id": _gmail_pdf_expense_id(message_id, filename, expense),
+                        "note": f"{_header(message, 'From')[:120]} | PDF: {filename}",
+                    }
+                )
+            )
+    return result
+
+
+def _pdf_attachment_payloads(
+    service: GmailServiceProtocol,
+    message: dict[str, Any],
+) -> list[tuple[str, bytes]]:
+    message_id = str(message.get("id") or "")
+    payload = message.get("payload")
+    if not isinstance(payload, dict):
+        return []
+    return list(_walk_pdf_attachment_payloads(service, message_id, payload))
+
+
+def _walk_pdf_attachment_payloads(
+    service: GmailServiceProtocol,
+    message_id: str,
+    payload: dict[str, Any],
+) -> list[tuple[str, bytes]]:
+    result: list[tuple[str, bytes]] = []
+    filename = str(payload.get("filename") or "")
+    mime_type = str(payload.get("mimeType") or "")
+    body = payload.get("body") if isinstance(payload.get("body"), dict) else {}
+    is_pdf = filename.lower().endswith(".pdf") or mime_type in {
+        "application/pdf",
+        "application/octet-stream",
+    }
+    if filename and is_pdf:
+        data = body.get("data")
+        attachment_id = body.get("attachmentId")
+        if isinstance(data, str):
+            decoded = _decode_base64url_bytes(data)
+        elif isinstance(attachment_id, str):
+            decoded = _get_attachment(service, message_id, attachment_id)
+        else:
+            decoded = b""
+        if decoded:
+            result.append((filename, decoded))
+
+    for part in payload.get("parts", []) or []:
+        if isinstance(part, dict):
+            result.extend(_walk_pdf_attachment_payloads(service, message_id, part))
+    return result
+
+
+def _gmail_pdf_expense_id(message_id: str, filename: str, expense: Expense) -> str:
+    stable_key = "|".join(
+        [
+            "gmail-card-pdf",
+            message_id,
+            filename,
+            expense.transaction_date,
+            expense.merchant,
+            str(expense.amount),
+            expense.card_last_four,
+        ]
+    )
+    return hashlib.sha256(stable_key.encode()).hexdigest()[:24]
+
+
 def _to_expense(parsed: ParsedCardNotification) -> Expense:
     stable_key = "|".join(
         [
@@ -187,11 +301,15 @@ def _payload_text(payload: dict[str, Any]) -> list[str]:
 
 
 def _decode_base64url(value: str) -> str:
-    padded = value + "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(padded.encode()).decode(
+    return _decode_base64url_bytes(value).decode(
         "utf-8",
         errors="ignore",
     )
+
+
+def _decode_base64url_bytes(value: str) -> bytes:
+    padded = value + "=" * (-len(value) % 4)
+    return base64.urlsafe_b64decode(padded.encode())
 
 
 def _looks_like_card_notification(text: str) -> bool:

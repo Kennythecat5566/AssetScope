@@ -140,6 +140,48 @@ def test_loads_gmail_expenses_from_service(tmp_path: Path) -> None:
     assert expenses[0].currency == Currency.USD
 
 
+def test_loads_encrypted_pdf_attachment_expense_from_gmail(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    settings = Settings(
+        api_token="a-long-enough-test-token",
+        import_dir=tmp_path,
+        gmail_expenses_enabled=True,
+        gmail_token_file=tmp_path / "token.json",
+        gmail_max_messages=10,
+        sinopac_card_pdf_password="pdf-secret",
+    )
+
+    def fake_extract_pdf_text(payload: bytes, password: str) -> str:
+        assert payload == b"%PDF fake encrypted payload"
+        assert password == "pdf-secret"
+        return (
+            "Credit card transaction\n"
+            "Date: 2026-08-29\n"
+            "Merchant: STARBUCKS\n"
+            "Amount: TWD 180\n"
+            "ending 1234"
+        )
+
+    monkeypatch.setattr(
+        "app.connectors.gmail_card.extract_pdf_text",
+        fake_extract_pdf_text,
+    )
+
+    expenses, sources = load_gmail_card_expenses(
+        settings,
+        service=FakeGmailPdfService(),
+    )
+
+    assert sources == ["gmail-card-notifications"]
+    assert len(expenses) == 1
+    assert expenses[0].transaction_date == "2026-08-29"
+    assert expenses[0].merchant == "STARBUCKS"
+    assert expenses[0].amount == 180
+    assert expenses[0].card_last_four == "1234"
+
+
 class FakeGmailService:
     def users(self) -> "FakeGmailService":
         return self
@@ -190,3 +232,55 @@ class FakeRequest:
 
     def execute(self) -> dict[str, object]:
         return self.response
+
+
+class FakeGmailPdfService:
+    def users(self) -> "FakeGmailPdfService":
+        return self
+
+    def messages(self) -> "FakeGmailPdfService":
+        return self
+
+    def attachments(self) -> "FakeGmailPdfService":
+        return self
+
+    def list(self, *, userId: str, q: str, maxResults: int) -> "FakeRequest":
+        assert userId == "me"
+        assert q
+        assert maxResults == 10
+        return FakeRequest({"messages": [{"id": "gmail-message-pdf"}]})
+
+    def list_next(
+        self,
+        request: "FakeRequest",
+        response: dict[str, object],
+    ) -> None:
+        return None
+
+    def get(self, **kwargs) -> "FakeRequest":
+        if "attachmentId" in kwargs or "id" in kwargs and "messageId" in kwargs:
+            attachment_id = kwargs.get("attachmentId") or kwargs["id"]
+            assert kwargs["userId"] == "me"
+            assert kwargs["messageId"] == "gmail-message-pdf"
+            assert attachment_id == "attachment-1"
+            return FakeRequest({"data": _encoded("%PDF fake encrypted payload")})
+
+        assert kwargs["userId"] == "me"
+        assert kwargs["id"] == "gmail-message-pdf"
+        assert kwargs["format"] == "full"
+        return FakeRequest(
+            {
+                "id": "gmail-message-pdf",
+                "payload": {
+                    "headers": [{"name": "From", "value": "card@example.com"}],
+                    "mimeType": "multipart/mixed",
+                    "parts": [
+                        {
+                            "mimeType": "application/pdf",
+                            "filename": "Sinopac_Service.pdf",
+                            "body": {"attachmentId": "attachment-1"},
+                        }
+                    ],
+                },
+            }
+        )
