@@ -13,6 +13,7 @@ def test_portfolio_requires_token(tmp_path: Path) -> None:
         exchange_rate_auto_update=False,
         shioaji_enabled=False,
         firstrade_api_enabled=False,
+        gmail_expenses_enabled=False,
     )
     client = TestClient(app)
 

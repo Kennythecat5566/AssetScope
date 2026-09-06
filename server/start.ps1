@@ -6,11 +6,32 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
     throw "Server environment is missing. Run .\setup.ps1 first."
 }
 
-$ExistingListener = Get-NetTCPConnection `
-    -LocalPort 8787 `
-    -State Listen `
-    -ErrorAction SilentlyContinue |
-    Select-Object -First 1
+function Get-AssetScopeListener {
+    Get-NetTCPConnection `
+        -LocalPort 8787 `
+        -State Listen `
+        -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+}
+
+function Wait-PortRelease {
+    param([int]$Port)
+
+    for ($Attempt = 0; $Attempt -lt 20; $Attempt++) {
+        $Listener = Get-NetTCPConnection `
+            -LocalPort $Port `
+            -State Listen `
+            -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if (-not $Listener) {
+            return $true
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    return $false
+}
+
+$ExistingListener = Get-AssetScopeListener
 
 if ($ExistingListener) {
     try {
@@ -44,17 +65,30 @@ if ($ExistingListener) {
 
             Write-Host "AssetScope configuration or source changed. Restarting server..."
             Stop-Process -Id $ExistingListener.OwningProcess -Force
-            Start-Sleep -Seconds 2
+            if (Wait-PortRelease -Port 8787) {
+                $ExistingListener = $null
+            }
+            else {
+                $ExistingListener = Get-AssetScopeListener
+            }
         }
     } catch {
         # Fall through to the port ownership error below.
     }
 
-    $Owner = Get-Process `
-        -Id $ExistingListener.OwningProcess `
-        -ErrorAction SilentlyContinue
-    $OwnerName = if ($Owner) { $Owner.ProcessName } else { "unknown process" }
-    throw "Port 8787 is already used by $OwnerName (PID $($ExistingListener.OwningProcess))."
+    if ($ExistingListener) {
+        $Owner = Get-Process `
+            -Id $ExistingListener.OwningProcess `
+            -ErrorAction SilentlyContinue
+        if ($Owner) {
+            $OwnerName = $Owner.ProcessName
+            throw "Port 8787 is already used by $OwnerName (PID $($ExistingListener.OwningProcess))."
+        }
+
+        if (-not (Wait-PortRelease -Port 8787)) {
+            throw "Port 8787 is still busy after waiting for the previous process to exit."
+        }
+    }
 }
 
 & ".venv\Scripts\python.exe" -m uvicorn app.main:app --host 0.0.0.0 --port 8787
