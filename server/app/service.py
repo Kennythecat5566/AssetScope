@@ -1,3 +1,4 @@
+import logging
 from datetime import UTC, datetime
 
 from app.config import Settings
@@ -10,6 +11,8 @@ from app.connectors.shioaji import load_shioaji_data
 from app.connectors.sinopac_card import load_sinopac_card_expenses
 from app.models import Institution, PerformanceSummary, PortfolioResponse
 from app.portfolio_history import record_portfolio_snapshot
+
+logger = logging.getLogger(__name__)
 
 
 def build_portfolio(settings: Settings) -> PortfolioResponse:
@@ -41,7 +44,11 @@ def build_portfolio(settings: Settings) -> PortfolioResponse:
         firstrade_transactions = firstrade_api_data.transactions
         performance = PerformanceSummary()
     expenses, expense_sources = load_sinopac_card_expenses(settings.import_dir)
-    gmail_expenses, gmail_sources = load_gmail_card_expenses(settings)
+    try:
+        gmail_expenses, gmail_sources = load_gmail_card_expenses(settings)
+    except Exception:
+        logger.exception("Gmail expense import failed; continuing without Gmail data")
+        gmail_expenses, gmail_sources = [], []
     expenses = sorted(
         [*expenses, *gmail_expenses],
         key=lambda item: item.transaction_date,

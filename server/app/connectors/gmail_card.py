@@ -237,19 +237,59 @@ def _extract_merchant(text: str) -> str:
 
 
 def _extract_date(text: str) -> str | None:
+    label_pattern = (
+        r"(?:交易日期|消費日期|授權日期|交易時間|消費時間|日期|"
+        r"Date|Transaction Date)[:：\s]*"
+    )
+    for label in re.finditer(label_pattern, text, re.IGNORECASE):
+        parsed = _parse_date_candidate(text[label.end() : label.end() + 48])
+        if parsed:
+            return parsed
+
+    # Fallback only accepts unambiguous full years or ROC years.
+    for pattern in (
+        r"(?P<year>\d{4})[/-](?P<month>\d{1,2})[/-](?P<day>\d{1,2})",
+        r"(?P<year>\d{3})[/-](?P<month>\d{1,2})[/-](?P<day>\d{1,2})",
+    ):
+        match = re.search(pattern, text)
+        if match:
+            parsed = _date_from_parts(
+                int(match.group("year")),
+                int(match.group("month")),
+                int(match.group("day")),
+            )
+            if parsed:
+                return parsed
+    return None
+
+
+def _parse_date_candidate(text: str) -> str | None:
     patterns = [
-        r"(\d{4})[/-](\d{1,2})[/-](\d{1,2})",
-        r"(\d{2,3})[/-](\d{1,2})[/-](\d{1,2})",
+        r"(?<!\d)(?P<year>\d{4})[/-](?P<month>\d{1,2})[/-](?P<day>\d{1,2})(?!\d)",
+        r"(?<!\d)(?P<month>\d{1,2})[/-](?P<day>\d{1,2})[/-](?P<year>\d{4})(?!\d)",
+        r"(?<!\d)(?P<year>\d{2,3})[/-](?P<month>\d{1,2})[/-](?P<day>\d{1,2})(?!\d)",
     ]
     for pattern in patterns:
         match = re.search(pattern, text)
         if not match:
             continue
-        year, month, day = map(int, match.groups())
-        if year < 1911:
-            year += 1911
-        return datetime(year, month, day).date().isoformat()
+        parsed = _date_from_parts(
+            int(match.group("year")),
+            int(match.group("month")),
+            int(match.group("day")),
+        )
+        if parsed:
+            return parsed
     return None
+
+
+def _date_from_parts(year: int, month: int, day: int) -> str | None:
+    if year < 1911:
+        year += 1911
+    try:
+        return datetime(year, month, day).date().isoformat()
+    except ValueError:
+        return None
 
 
 def _message_date(message: dict[str, Any]) -> str:

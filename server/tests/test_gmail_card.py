@@ -49,6 +49,78 @@ def test_ignores_non_card_email() -> None:
     assert parse_card_notification(message) is None
 
 
+def test_uses_message_date_when_card_date_is_invalid() -> None:
+    message = {
+        "id": "gmail-message-invalid-date",
+        "payload": {
+            "headers": [
+                {"name": "From", "value": "bank@example.com"},
+                {"name": "Date", "value": "Mon, 07 Sep 2026 00:23:00 +0800"},
+            ],
+            "mimeType": "text/plain",
+            "body": {
+                "data": _encoded(
+                    "Credit card transaction\n"
+                    "Date: 2026/23/07 00:23\n"
+                    "Merchant: STARBUCKS\n"
+                    "Amount: TWD 180"
+                )
+            },
+        },
+    }
+
+    parsed = parse_card_notification(message)
+
+    assert parsed is not None
+    assert parsed.transaction_date == "2026-09-07"
+
+
+def test_parses_roc_year_card_date() -> None:
+    message = {
+        "id": "gmail-message-roc-date",
+        "payload": {
+            "headers": [{"name": "From", "value": "bank@example.com"}],
+            "mimeType": "text/plain",
+            "body": {
+                "data": _encoded(
+                    "信用卡消費通知\n"
+                    "交易日期：115/06/09\n"
+                    "Merchant: BOOKSTORE\n"
+                    "Amount: TWD 300"
+                )
+            },
+        },
+    }
+
+    parsed = parse_card_notification(message)
+
+    assert parsed is not None
+    assert parsed.transaction_date == "2026-06-09"
+
+
+def test_parses_english_month_day_year_card_date() -> None:
+    message = {
+        "id": "gmail-message-us-date",
+        "payload": {
+            "headers": [{"name": "From", "value": "bank@example.com"}],
+            "mimeType": "text/plain",
+            "body": {
+                "data": _encoded(
+                    "Credit card transaction\n"
+                    "Date: 09/07/2026\n"
+                    "Merchant: CAFE\n"
+                    "Amount: USD 12.50"
+                )
+            },
+        },
+    }
+
+    parsed = parse_card_notification(message)
+
+    assert parsed is not None
+    assert parsed.transaction_date == "2026-09-07"
+
+
 def test_loads_gmail_expenses_from_service(tmp_path: Path) -> None:
     settings = Settings(
         api_token="a-long-enough-test-token",
