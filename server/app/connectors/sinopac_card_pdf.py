@@ -11,7 +11,7 @@ from pathlib import Path
 from pypdf import PdfReader
 
 from app.connectors.sinopac_card import _category
-from app.models import Currency, Expense
+from app.models import Currency, Expense, ExpenseCategory
 
 
 @dataclass
@@ -63,6 +63,10 @@ def extract_pdf_text(pdf_payload: bytes, password: str = "") -> str:
 
 def parse_sinopac_card_pdf_text(text: str, source: str) -> list[Expense]:
     normalized = _normalize_text(text)
+    row_expense = _parse_authorization_row(normalized, source)
+    if row_expense is not None:
+        return [row_expense]
+
     transaction_date = _find_date(normalized)
     merchant = _find_merchant(normalized)
     amount, currency = _find_amount(normalized)
@@ -87,6 +91,53 @@ def parse_sinopac_card_pdf_text(text: str, source: str) -> list[Expense]:
             note=f"Imported from encrypted PDF attachment: {source}",
         )
     ]
+
+
+def _parse_authorization_row(text: str, source: str) -> Expense | None:
+    period_match = re.search(r"期間[:：]\s*(\d{2,3})/(\d{1,2})/(\d{1,2})", text)
+    base_year = int(period_match.group(1)) + 1911 if period_match else None
+    row_match = re.search(
+        r"(正卡|附卡)\s+"
+        r"(?P<card>\d{4})\s+"
+        r"(?P<month>\d{1,2})\s*/\s*(?P<day>\d{1,2})\s+"
+        r"(?P<hour>\d{1,2})\s*[：:]\s*(?P<minute>\d{2})\s+"
+        r"(?P<region>[A-Z]{2})\s+"
+        r"(?P<currency>NT\$|NTD|TWD|US\$|USD|\$)\s*"
+        r"(?P<amount>[\d,]+(?:\.\d+)?)",
+        text,
+        re.IGNORECASE,
+    )
+    if not row_match or base_year is None:
+        return None
+
+    transaction_date = _date_from_parts(
+        base_year,
+        int(row_match.group("month")),
+        int(row_match.group("day")),
+    )
+    if not transaction_date:
+        return None
+
+    currency_text = row_match.group("currency").upper()
+    currency = Currency.USD if currency_text in {"US$", "USD", "$"} else Currency.TWD
+    amount = float(row_match.group("amount").replace(",", ""))
+    card_last_four = row_match.group("card")
+    region = row_match.group("region").upper()
+    merchant = "永豐信用卡授權消費"
+    stable_key = "|".join(
+        [source, transaction_date, merchant, str(amount), currency, card_last_four]
+    )
+    return Expense(
+        id=hashlib.sha256(stable_key.encode()).hexdigest()[:24],
+        transaction_date=transaction_date,
+        posted_date=None,
+        merchant=merchant,
+        category=ExpenseCategory.OTHER,
+        amount=amount,
+        currency=currency,
+        card_last_four=card_last_four,
+        note=f"Imported from encrypted PDF attachment: {source}; region={region}",
+    )
 
 
 def _normalize_text(text: str) -> str:

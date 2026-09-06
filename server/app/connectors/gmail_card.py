@@ -64,10 +64,13 @@ def parse_card_notification(message: dict[str, Any]) -> ParsedCardNotification |
     if amount <= 0:
         return None
 
-    merchant = _extract_merchant(text) or "Credit card notification"
+    sender = _header(message, "From")
+    merchant = _extract_merchant(text)
+    if not merchant or _is_low_confidence_merchant(merchant):
+        merchant = _merchant_from_sender(sender)
     transaction_date = _extract_date(text) or _message_date(message)
     card_last_four = _extract_card_last_four(text)
-    note = _header(message, "From")
+    note = sender
 
     return ParsedCardNotification(
         message_id=message_id,
@@ -282,7 +285,7 @@ def _message_text(message: dict[str, Any]) -> str:
     snippet = message.get("snippet")
     if isinstance(snippet, str):
         parts.append(snippet)
-    return "\n".join(part for part in parts if part)
+    return _repair_mojibake("\n".join(part for part in parts if part))
 
 
 def _payload_text(payload: dict[str, Any]) -> list[str]:
@@ -319,11 +322,12 @@ def _looks_like_card_notification(text: str) -> bool:
         for keyword in (
             "信用卡",
             "刷卡",
-            "消費",
-            "交易通知",
-            "card",
-            "credit",
-            "transaction",
+            "消費通知",
+            "消費授權",
+            "交易授權",
+            "credit card transaction",
+            "card transaction",
+            "card authorization",
         )
     )
 
@@ -352,6 +356,28 @@ def _extract_merchant(text: str) -> str:
         if match:
             return " ".join(match.group(1).split())
     return ""
+
+
+def _merchant_from_sender(sender: str) -> str:
+    name, _, email = sender.partition("<")
+    cleaned = name.strip().strip('"') or email.rstrip(">")
+    return cleaned[:120] if cleaned else "信用卡消費通知"
+
+
+def _is_low_confidence_merchant(merchant: str) -> bool:
+    normalized = merchant.strip()
+    if len(normalized) <= 2:
+        return True
+    return any(
+        marker in normalized
+        for marker in (
+            "注意事項",
+            "實際交易",
+            "實際消費",
+            "消費時間不盡相同",
+            "Credit card notification",
+        )
+    )
 
 
 def _extract_date(text: str) -> str | None:
@@ -440,8 +466,22 @@ def _header(message: dict[str, Any], name: str) -> str:
     headers = (message.get("payload") or {}).get("headers", [])
     for header in headers:
         if isinstance(header, dict) and header.get("name", "").lower() == name.lower():
-            return str(header.get("value") or "")
+            return _repair_mojibake(str(header.get("value") or ""))
     return ""
+
+
+def _repair_mojibake(value: str) -> str:
+    if not any(marker in value for marker in ("Ã", "Â", "ä", "å", "æ", "é", "è")):
+        return value
+    try:
+        repaired = value.encode("latin1").decode("utf-8")
+    except UnicodeError:
+        return value
+    return repaired if _mojibake_score(repaired) < _mojibake_score(value) else value
+
+
+def _mojibake_score(value: str) -> int:
+    return sum(value.count(marker) for marker in ("Ã", "Â", "ä", "å", "æ", "é", "è", "�"))
 
 
 def _resolve_server_path(path: Path) -> Path:

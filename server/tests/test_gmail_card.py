@@ -49,6 +49,78 @@ def test_ignores_non_card_email() -> None:
     assert parse_card_notification(message) is None
 
 
+def test_ignores_general_receipts_that_are_not_card_notifications() -> None:
+    message = {
+        "id": "gmail-message-receipt",
+        "snippet": "Uber receipt transaction paid by card Amount USD 9.18",
+        "payload": {
+            "headers": [{"name": "From", "value": "Uber <noreply@uber.com>"}],
+            "mimeType": "text/plain",
+            "body": {
+                "data": _encoded(
+                    "Your Uber receipt\n"
+                    "Transaction total USD 9.18\n"
+                    "Paid by card"
+                )
+            },
+        },
+    }
+
+    assert parse_card_notification(message) is None
+
+
+def test_repairs_mojibake_sender_when_merchant_is_missing() -> None:
+    message = {
+        "id": "gmail-message-mojibake",
+        "payload": {
+            "headers": [
+                {
+                    "name": "From",
+                    "value": '"å°æ°éè¡" <TSB@example.com>',
+                }
+            ],
+            "mimeType": "text/plain",
+            "body": {
+                "data": _encoded(
+                    "信用卡消費通知\n"
+                    "日期：2026/09/07\n"
+                    "金額：TWD 150"
+                )
+            },
+        },
+    }
+
+    parsed = parse_card_notification(message)
+
+    assert parsed is not None
+    assert parsed.merchant == "台新銀行"
+    assert parsed.note.startswith('"台新銀行"')
+
+
+def test_uses_sender_when_extracted_merchant_is_low_confidence() -> None:
+    message = {
+        "id": "gmail-message-low-confidence-merchant",
+        "payload": {
+            "headers": [{"name": "From", "value": '"永豐銀行信用卡" <card@example.com>'}],
+            "mimeType": "text/plain",
+            "body": {
+                "data": _encoded(
+                    "信用卡消費通知\n"
+                    "Date: 2026/08/25\n"
+                    "Merchant: 實際\n"
+                    "Amount: USD 21\n"
+                    "ending 3900"
+                )
+            },
+        },
+    }
+
+    parsed = parse_card_notification(message)
+
+    assert parsed is not None
+    assert parsed.merchant == "永豐銀行信用卡"
+
+
 def test_uses_message_date_when_card_date_is_invalid() -> None:
     message = {
         "id": "gmail-message-invalid-date",

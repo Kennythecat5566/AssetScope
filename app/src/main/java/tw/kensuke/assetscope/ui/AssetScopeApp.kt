@@ -864,7 +864,7 @@ private fun buildExpensePageData(
     val positiveTotal = categoryTotals.sumOf { it.second }
     val allocations = categoryTotals.map { (category, value) ->
         Allocation(
-            label = category.displayName,
+            label = category.name,
             valueTwd = value,
             ratio = if (positiveTotal == 0.0) 0.0 else value / positiveTotal,
         )
@@ -881,8 +881,11 @@ private fun ExpenseSummarySection(
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         SectionHeader(
             title = uiText("日常花費", "Expenses"),
-            trailing = data.latestMonth?.replace("-", " / ")
-                ?: uiText("尚無資料", "No data"),
+            trailing = if (data.monthlyExpenses.isEmpty()) {
+                uiText("無資料", "No data")
+            } else {
+                uiText("全部", "All")
+            },
         )
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -891,7 +894,7 @@ private fun ExpenseSummarySection(
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    uiText("本月信用卡支出", "Card spending this month"),
+                    uiText("信用卡總支出", "Total card spending"),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -904,8 +907,8 @@ private fun ExpenseSummarySection(
                 )
                 Text(
                     uiText(
-                        "${data.monthlyExpenses.size} 筆永豐信用卡交易",
-                        "${data.monthlyExpenses.size} SinoPac card transactions",
+                        "${data.monthlyExpenses.size} 筆信用卡交易",
+                        "${data.monthlyExpenses.size} card transactions",
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2412,10 +2415,20 @@ private fun TransactionType.localizedName(): String = when (this) {
 
 @Composable
 private fun tw.kensuke.assetscope.domain.model.ExpenseCategory.localizedName(): String =
-    expenseCategoryLabel(displayName)
+    expenseCategoryLabel(name)
 
 @Composable
 private fun expenseCategoryLabel(value: String): String = when (value) {
+    "DINING", "餐飲" -> uiText("餐飲", "Dining")
+    "TRANSPORT", "交通" -> uiText("交通", "Transport")
+    "SHOPPING", "購物" -> uiText("購物", "Shopping")
+    "GROCERIES", "食品雜貨" -> uiText("食品雜貨", "Groceries")
+    "ENTERTAINMENT", "娛樂" -> uiText("娛樂", "Entertainment")
+    "SUBSCRIPTION", "訂閱" -> uiText("訂閱", "Subscriptions")
+    "TRAVEL", "旅遊" -> uiText("旅遊", "Travel")
+    "HEALTH", "健康" -> uiText("健康", "Health")
+    "UTILITIES", "水電瓦斯" -> uiText("水電瓦斯", "Utilities")
+    "OTHER", "其他" -> uiText("其他", "Other")
     "餐飲" -> uiText("餐飲", "Dining")
     "交通" -> uiText("交通", "Transport")
     "購物" -> uiText("購物", "Shopping")
