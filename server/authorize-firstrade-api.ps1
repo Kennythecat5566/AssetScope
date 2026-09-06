@@ -48,10 +48,38 @@ if ($LASTEXITCODE -ne 0) {
 
 $Username = Read-Host "Firstrade username"
 $PasswordSecure = Read-Host "Firstrade password" -AsSecureString
-$MfaSecretSecure = Read-Host "TOTP MFA secret (optional; press Enter to skip)" -AsSecureString
-$Email = Read-Host "Email MFA address (optional; press Enter to skip)"
-$Phone = Read-Host "Phone MFA number (optional; press Enter to skip)"
-$PinSecure = Read-Host "PIN MFA (optional; press Enter to skip)" -AsSecureString
+$MfaMethod = Read-Host "MFA method: 1=manual code (recommended), 2=TOTP secret, 3=email code, 4=SMS code, 5=PIN"
+if (-not $MfaMethod) {
+    $MfaMethod = "1"
+}
+
+$MfaSecretSecure = ConvertTo-SecureString "" -AsPlainText -Force
+$Email = ""
+$Phone = ""
+$PinSecure = ConvertTo-SecureString "" -AsPlainText -Force
+
+switch ($MfaMethod.Trim()) {
+    "1" {
+        Write-Host "Using manual MFA. Enter the code when Firstrade sends or shows it."
+    }
+    "2" {
+        $MfaSecretSecure = Read-Host "TOTP MFA secret" -AsSecureString
+    }
+    "3" {
+        $Email = Read-Host "Email address registered with Firstrade MFA"
+    }
+    "4" {
+        $Phone = Read-Host "Phone number registered with Firstrade MFA"
+    }
+    "5" {
+        Write-Host "PIN is only for Firstrade accounts explicitly configured for PIN MFA."
+        Write-Host "Do not enter your trading PIN unless Firstrade uses it as login MFA."
+        $PinSecure = Read-Host "PIN MFA" -AsSecureString
+    }
+    default {
+        throw "Unsupported MFA method: $MfaMethod"
+    }
+}
 
 $env:ASSETSCOPE_FIRSTRADE_API_USERNAME = $Username
 $env:ASSETSCOPE_FIRSTRADE_API_PASSWORD = ConvertFrom-SecureStringToPlainText $PasswordSecure

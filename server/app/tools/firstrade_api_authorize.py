@@ -1,7 +1,5 @@
 import json
 import os
-import sys
-from pathlib import Path
 
 from app.config import get_settings
 from app.connectors.firstrade_api import _add_firstrade_path, _resolve_server_path
@@ -35,13 +33,24 @@ def main() -> int:
         mfa_secret=mfa_secret,
         save_session=False,
     )
-    need_code = session.login()
+    try:
+        need_code = session.login()
+    except Exception as error:
+        print(f"Firstrade login failed: {error}")
+        print("If you entered PIN MFA, retry with MFA method 1 (manual code).")
+        print("PIN is only for accounts that explicitly use PIN during login MFA.")
+        return 1
+
     if need_code:
         code = input("Enter the Firstrade MFA code: ").strip()
         if not code:
             print("MFA code is required.")
             return 1
-        session.login_two(code)
+        try:
+            session.login_two(code)
+        except Exception as error:
+            print(f"Firstrade MFA verification failed: {error}")
+            return 1
 
     token_file.write_text(
         json.dumps(session.get_tokens(), indent=2),

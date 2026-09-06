@@ -185,6 +185,11 @@ The script asks for your Firstrade username and password one time, then handles
 MFA. Credentials are passed only to that PowerShell/Python process and are not
 written to `server\.env`. On success, the script saves a local session token to:
 
+For MFA, choose `1=manual code` unless you already have a Firstrade TOTP secret.
+Do not enter your trading PIN as `PIN MFA`; that option is only for accounts
+where Firstrade explicitly uses a PIN during login MFA. If you see `Bad Request`
+after choosing PIN, rerun the script and choose manual code.
+
 ```text
 server\data\raw\firstrade-api\session.json
 ```
