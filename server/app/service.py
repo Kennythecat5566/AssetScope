@@ -1,5 +1,7 @@
 import logging
+import time
 from datetime import UTC, datetime
+from threading import Lock
 
 from app.config import Settings
 from app.connectors.csv_folder import load_csv_folder
@@ -13,9 +15,44 @@ from app.models import Institution, PerformanceSummary, PortfolioResponse
 from app.portfolio_history import record_portfolio_snapshot
 
 logger = logging.getLogger(__name__)
+_portfolio_cache_lock = Lock()
+_portfolio_cache: tuple[str, float, PortfolioResponse] | None = None
 
 
 def build_portfolio(settings: Settings) -> PortfolioResponse:
+    global _portfolio_cache
+
+    cache_key = _settings_cache_key(settings)
+    if settings.portfolio_cache_seconds > 0:
+        with _portfolio_cache_lock:
+            cached = _portfolio_cache
+            if cached is not None:
+                cached_key, cached_at, cached_response = cached
+                if (
+                    cached_key == cache_key
+                    and time.monotonic() - cached_at < settings.portfolio_cache_seconds
+                ):
+                    return cached_response
+
+    response = _build_portfolio_uncached(settings)
+    if settings.portfolio_cache_seconds > 0:
+        with _portfolio_cache_lock:
+            _portfolio_cache = (cache_key, time.monotonic(), response)
+    return response
+
+
+def clear_portfolio_cache() -> None:
+    global _portfolio_cache
+
+    with _portfolio_cache_lock:
+        _portfolio_cache = None
+
+
+def _settings_cache_key(settings: Settings) -> str:
+    return settings.model_dump_json()
+
+
+def _build_portfolio_uncached(settings: Settings) -> PortfolioResponse:
     csv_holdings, sources = load_csv_folder(settings.import_dir)
     shioaji_data = load_shioaji_data(settings)
     if shioaji_data.holdings:

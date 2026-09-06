@@ -77,3 +77,35 @@ def test_portfolio_continues_when_gmail_import_fails(
     assert response.status_code == 200
     assert response.json()["expenses"] == []
     app.dependency_overrides.clear()
+
+
+def test_portfolio_response_is_cached(tmp_path: Path, monkeypatch) -> None:
+    service.clear_portfolio_cache()
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        api_token="a-long-enough-test-token",
+        import_dir=tmp_path,
+        exchange_rate_auto_update=False,
+        shioaji_enabled=False,
+        firstrade_api_enabled=False,
+        gmail_expenses_enabled=False,
+        portfolio_cache_seconds=30,
+    )
+    calls = 0
+
+    original_load_csv_folder = service.load_csv_folder
+
+    def counting_load_csv_folder(import_dir):
+        nonlocal calls
+        calls += 1
+        return original_load_csv_folder(import_dir)
+
+    monkeypatch.setattr(service, "load_csv_folder", counting_load_csv_folder)
+    client = TestClient(app)
+    headers = {"Authorization": "Bearer a-long-enough-test-token"}
+
+    assert client.get("/api/v1/portfolio", headers=headers).status_code == 200
+    assert client.get("/api/v1/portfolio", headers=headers).status_code == 200
+    assert calls == 1
+
+    service.clear_portfolio_cache()
+    app.dependency_overrides.clear()

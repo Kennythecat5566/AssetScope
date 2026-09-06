@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     api_token: str = Field(min_length=16)
     import_dir: Path = Path("data/imports")
     usd_to_twd: float = Field(default=32.4, gt=0)
+    portfolio_cache_seconds: int = Field(default=30, ge=0, le=3600)
     exchange_rate_auto_update: bool = True
     exchange_rate_cache_hours: int = Field(default=6, ge=1, le=168)
     shioaji_enabled: bool = False

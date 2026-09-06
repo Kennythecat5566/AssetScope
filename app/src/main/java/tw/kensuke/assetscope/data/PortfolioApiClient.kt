@@ -46,7 +46,7 @@ class PortfolioApiClient {
         return try {
             connection.requestMethod = "GET"
             connection.connectTimeout = 8_000
-            connection.readTimeout = 15_000
+            connection.readTimeout = 60_000
             connection.setRequestProperty("Accept", "application/json")
             connection.setRequestProperty("Authorization", "Bearer $normalizedToken")
 
