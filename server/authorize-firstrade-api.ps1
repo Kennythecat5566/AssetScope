@@ -15,6 +15,9 @@ if (-not (Test-Path -LiteralPath $EnvPath)) {
 }
 
 function ConvertFrom-SecureStringToPlainText([securestring]$Value) {
+    if ($null -eq $Value) {
+        return ""
+    }
     $Pointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Value)
     try {
         return [Runtime.InteropServices.Marshal]::PtrToStringBSTR($Pointer)
@@ -53,10 +56,10 @@ if (-not $MfaMethod) {
     $MfaMethod = "1"
 }
 
-$MfaSecretSecure = ConvertTo-SecureString "" -AsPlainText -Force
+$MfaSecretSecure = $null
 $Email = ""
 $Phone = ""
-$PinSecure = ConvertTo-SecureString "" -AsPlainText -Force
+$PinSecure = $null
 
 switch ($MfaMethod.Trim()) {
     "1" {
