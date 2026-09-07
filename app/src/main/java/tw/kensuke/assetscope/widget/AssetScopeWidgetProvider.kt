@@ -10,6 +10,7 @@ import android.widget.RemoteViews
 import org.json.JSONArray
 import tw.kensuke.assetscope.MainActivity
 import tw.kensuke.assetscope.R
+import tw.kensuke.assetscope.domain.HoldingNormalizer
 import tw.kensuke.assetscope.domain.PortfolioCalculator
 import tw.kensuke.assetscope.domain.model.AssetType
 import tw.kensuke.assetscope.domain.model.Currency
@@ -88,7 +89,9 @@ class AssetScopeWidgetProvider : AppWidgetProvider() {
             val holdings = runCatching {
                 val stored = preferences.getString(KEY_HOLDINGS, null).orEmpty()
                 val array = JSONArray(stored)
-                List(array.length()) { index -> array.getJSONObject(index).toHolding() }
+                HoldingNormalizer.normalize(
+                    List(array.length()) { index -> array.getJSONObject(index).toHolding() },
+                )
             }.getOrDefault(emptyList())
 
             if (holdings.isEmpty()) {

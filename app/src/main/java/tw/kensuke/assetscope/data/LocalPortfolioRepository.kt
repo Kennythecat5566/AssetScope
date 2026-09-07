@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import tw.kensuke.assetscope.domain.HoldingNormalizer
 import tw.kensuke.assetscope.domain.model.AssetType
 import tw.kensuke.assetscope.domain.model.AppSettings
 import tw.kensuke.assetscope.domain.model.Currency
@@ -84,7 +85,8 @@ class LocalPortfolioRepository(
     }
 
     override suspend fun importCsv(content: String): ImportResult = withContext(Dispatchers.IO) {
-        val (imported, skipped) = CsvHoldingParser.parse(content)
+        val (parsed, skipped) = CsvHoldingParser.parse(content)
+        val imported = HoldingNormalizer.normalize(parsed)
         if (imported.isNotEmpty()) {
             mutableHoldings.value = imported
             saveHoldings(imported)
@@ -261,10 +263,11 @@ class LocalPortfolioRepository(
     }
 
     private fun applyRemotePortfolio(remote: RemotePortfolio) {
-        mutableHoldings.value = remote.holdings
+        val holdings = HoldingNormalizer.normalize(remote.holdings)
+        mutableHoldings.value = holdings
         mutableExchangeRates.value = remote.rates
         mutableInsights.value = remote.insights
-        saveHoldings(remote.holdings)
+        saveHoldings(holdings)
         saveInsights(remote.insights)
         preferences.edit()
             .putFloat(KEY_USD_TO_TWD, remote.rates.usdToTwd.toFloat())
@@ -302,9 +305,14 @@ class LocalPortfolioRepository(
         val stored = preferences.getString(KEY_HOLDINGS, null) ?: return sampleHoldings
         return runCatching {
             val array = JSONArray(stored)
-            List(array.length()) { index ->
+            val holdings = List(array.length()) { index ->
                 array.getJSONObject(index).toHolding()
             }
+            val normalized = HoldingNormalizer.normalize(holdings)
+            if (normalized != holdings) {
+                saveHoldings(normalized)
+            }
+            normalized
         }.getOrDefault(sampleHoldings)
     }
 
