@@ -1,4 +1,5 @@
 <resources>
     <string name="app_name">AssetScope</string>
+    <string name="widget_title">ASSET SCOPE</string>
+    <string name="widget_description">Show your latest AssetScope portfolio summary.</string>
 </resources>
-

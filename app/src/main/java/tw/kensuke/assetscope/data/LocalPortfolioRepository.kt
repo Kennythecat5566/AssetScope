@@ -27,6 +27,7 @@ import tw.kensuke.assetscope.domain.model.PaperBot
 import tw.kensuke.assetscope.domain.model.Transaction
 import tw.kensuke.assetscope.domain.model.TransactionType
 import tw.kensuke.assetscope.domain.model.UiLanguage
+import tw.kensuke.assetscope.widget.AssetScopeWidgetProvider
 
 class LocalPortfolioRepository(
     context: Context,
@@ -87,6 +88,7 @@ class LocalPortfolioRepository(
         if (imported.isNotEmpty()) {
             mutableHoldings.value = imported
             saveHoldings(imported)
+            AssetScopeWidgetProvider.updateAll(appContext)
             val baseUrl = preferences.getString(KEY_SERVER_URL, null)
             val token = preferences.getString(KEY_SERVER_TOKEN, null)
             if (baseUrl != null && token != null) {
@@ -232,6 +234,7 @@ class LocalPortfolioRepository(
     override suspend fun setDisplayCurrency(currency: Currency) {
         preferences.edit().putString(KEY_DISPLAY_CURRENCY, currency.name).apply()
         mutableAppSettings.value = mutableAppSettings.value.copy(displayCurrency = currency)
+        AssetScopeWidgetProvider.updateAll(appContext)
     }
 
     override suspend fun setUiLanguage(language: UiLanguage) {
@@ -266,6 +269,7 @@ class LocalPortfolioRepository(
         preferences.edit()
             .putFloat(KEY_USD_TO_TWD, remote.rates.usdToTwd.toFloat())
             .apply()
+        AssetScopeWidgetProvider.updateAll(appContext)
     }
 
     override suspend fun disableServerSync() {
@@ -280,6 +284,7 @@ class LocalPortfolioRepository(
     override suspend fun resetToSampleData() {
         mutableHoldings.value = sampleHoldings
         saveHoldings(sampleHoldings)
+        AssetScopeWidgetProvider.updateAll(appContext)
         val baseUrl = preferences.getString(KEY_SERVER_URL, null)
         val token = preferences.getString(KEY_SERVER_TOKEN, null)
         if (baseUrl != null && token != null) {
