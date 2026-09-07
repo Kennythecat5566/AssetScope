@@ -56,26 +56,34 @@ def load_firstrade_api_data(
     if account_factory is None:
         account_factory = _build_account_factory(settings, token_file)
 
-    accounts: AccountDataProtocol = account_factory()
-    account_numbers = [
-        settings.firstrade_api_account.strip()
-    ] if settings.firstrade_api_account.strip() else accounts.account_numbers
+    try:
+        accounts: AccountDataProtocol = account_factory()
+        account_numbers = [
+            settings.firstrade_api_account.strip()
+        ] if settings.firstrade_api_account.strip() else accounts.account_numbers
 
-    holdings: list[Holding] = []
-    transactions: list[Transaction] = []
-    for account in account_numbers:
-        positions = accounts.get_positions(account)
-        holdings.extend(_positions_to_holdings(account, positions))
-        holdings.extend(_balance_to_cash_holding(account, accounts.get_account_balances(account)))
-        transactions.extend(
-            _history_to_transactions(
-                account,
-                accounts.get_account_history(
-                    account,
-                    date_range=settings.firstrade_api_history_range,
-                ),
+        holdings: list[Holding] = []
+        transactions: list[Transaction] = []
+        for account in account_numbers:
+            positions = accounts.get_positions(account)
+            holdings.extend(_positions_to_holdings(account, positions))
+            holdings.extend(
+                _balance_to_cash_holding(account, accounts.get_account_balances(account))
             )
-        )
+            transactions.extend(
+                _history_to_transactions(
+                    account,
+                    accounts.get_account_history(
+                        account,
+                        date_range=settings.firstrade_api_history_range,
+                    ),
+                )
+            )
+    except Exception as error:
+        raise RuntimeError(
+            "Firstrade API session is unavailable. "
+            "Run authorize-firstrade-api.cmd again."
+        ) from error
 
     return FirstradeApiData(holdings=holdings, transactions=transactions)
 
@@ -239,11 +247,11 @@ def _first(item: dict[str, Any], *keys: str, default: Any = None) -> Any:
 
 def _average_cost(item: dict[str, Any], quantity: Decimal) -> Decimal:
     average = _decimal(
-        _first(item, "average_cost", "avg_cost", "cost", "cost_per_share", default=0)
+        _first(item, "average_cost", "avg_cost", "cost_per_share", default=0)
     )
     if average > 0:
         return average
-    cost_basis = _decimal(_first(item, "cost_basis", "total_cost", default=0))
+    cost_basis = _decimal(_first(item, "cost_basis", "total_cost", "cost", default=0))
     if cost_basis > 0 and quantity > 0:
         return cost_basis / quantity
     return Decimal("0")

@@ -43,19 +43,51 @@ class PortfolioCalculatorTest {
         assertEquals(2, result.institutionAllocations.size)
     }
 
+    @Test
+    fun `cash and deposits count toward assets but not investment return`() {
+        val holdings = listOf(
+            holding(
+                institution = Institution.FIRSTRade,
+                currency = Currency.USD,
+                quantity = 10.0,
+                cost = 100.0,
+                price = 120.0,
+            ),
+            holding(
+                institution = Institution.SINOPAC_BANK,
+                currency = Currency.TWD,
+                quantity = 1.0,
+                cost = 500_000.0,
+                price = 500_000.0,
+                assetType = AssetType.DEPOSIT,
+            ),
+        )
+
+        val result = PortfolioCalculator.calculate(
+            holdings = holdings,
+            rates = ExchangeRates(usdToTwd = 30.0),
+        )
+
+        assertEquals(536_000.0, result.totalValueTwd, 0.001)
+        assertEquals(30_000.0, result.totalCostTwd, 0.001)
+        assertEquals(6_000.0, result.unrealizedProfitTwd, 0.001)
+        assertEquals(0.2, result.returnRate, 0.001)
+    }
+
     private fun holding(
         institution: Institution,
         currency: Currency,
         quantity: Double,
         cost: Double,
         price: Double,
+        assetType: AssetType = AssetType.STOCK,
     ) = Holding(
         id = "$institution-$currency",
         institution = institution,
         accountName = "test",
         symbol = "TEST",
         name = "Test holding",
-        assetType = AssetType.STOCK,
+        assetType = assetType,
         currency = currency,
         quantity = quantity,
         averageCost = cost,

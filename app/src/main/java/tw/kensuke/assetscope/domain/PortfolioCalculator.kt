@@ -1,6 +1,7 @@
 package tw.kensuke.assetscope.domain
 
 import tw.kensuke.assetscope.domain.model.Allocation
+import tw.kensuke.assetscope.domain.model.AssetType
 import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.ExchangeRates
 import tw.kensuke.assetscope.domain.model.Holding
@@ -18,7 +19,13 @@ object PortfolioCalculator {
         }
 
         val totalValue = holdings.sumOf { it.marketValue.toTwd(it.currency) }
-        val totalCost = holdings.sumOf { it.cost.toTwd(it.currency) }
+        val investmentHoldings = holdings.filter {
+            it.assetType == AssetType.STOCK || it.assetType == AssetType.ETF
+        }
+        val totalCost = investmentHoldings.sumOf { it.cost.toTwd(it.currency) }
+        val unrealizedProfit = investmentHoldings.sumOf {
+            it.unrealizedProfit.toTwd(it.currency)
+        }
         val institutionAllocations = holdings
             .groupBy(Holding::institution)
             .map { (institution, items) ->
@@ -49,8 +56,8 @@ object PortfolioCalculator {
         return PortfolioSummary(
             totalValueTwd = totalValue,
             totalCostTwd = totalCost,
-            unrealizedProfitTwd = totalValue - totalCost,
-            returnRate = if (totalCost == 0.0) 0.0 else (totalValue - totalCost) / totalCost,
+            unrealizedProfitTwd = unrealizedProfit,
+            returnRate = if (totalCost == 0.0) 0.0 else unrealizedProfit / totalCost,
             overseasValueTwd = overseas,
             domesticValueTwd = totalValue - overseas,
             institutionAllocations = institutionAllocations,

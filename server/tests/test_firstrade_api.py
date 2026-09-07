@@ -90,6 +90,39 @@ def test_loads_firstrade_api_assets_and_transactions(tmp_path: Path) -> None:
     ]
 
 
+def test_treats_firstrade_cost_as_total_cost_basis(tmp_path: Path) -> None:
+    class CostBasisAccounts(FakeFirstradeAccounts):
+        def get_positions(self, account: str) -> dict[str, object]:
+            return {
+                "items": [
+                    {
+                        "symbol": "VOO",
+                        "description": "Vanguard S&P 500 ETF",
+                        "quantity": "2.5",
+                        "cost": "1125.00",
+                        "last_price": "500.00",
+                    }
+                ]
+            }
+
+    token_file = tmp_path / "session.json"
+    token_file.write_text("{}", encoding="utf-8")
+    settings = Settings(
+        api_token="a-long-enough-test-token",
+        import_dir=tmp_path,
+        firstrade_api_enabled=True,
+        firstrade_api_token_file=token_file,
+    )
+
+    data = load_firstrade_api_data(
+        settings,
+        account_factory=CostBasisAccounts,
+    )
+
+    stock = next(item for item in data.holdings if item.symbol == "VOO")
+    assert stock.average_cost == 450
+
+
 def test_firstrade_api_is_disabled_by_default() -> None:
     settings = Settings(
         api_token="a-long-enough-test-token",

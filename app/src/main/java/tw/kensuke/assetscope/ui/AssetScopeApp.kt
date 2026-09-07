@@ -90,6 +90,7 @@ import tw.kensuke.assetscope.data.AppUpdate
 import tw.kensuke.assetscope.data.AppUpdateManager
 import tw.kensuke.assetscope.data.PortfolioRepository
 import tw.kensuke.assetscope.domain.model.Allocation
+import tw.kensuke.assetscope.domain.model.AssetType
 import tw.kensuke.assetscope.domain.model.Currency
 import tw.kensuke.assetscope.domain.model.Expense
 import tw.kensuke.assetscope.domain.model.Holding
@@ -2335,7 +2336,11 @@ private fun scrollHint(
 }
 
 private val Holding.returnRate: Double
-    get() = if (cost == 0.0) 0.0 else unrealizedProfit / cost
+    get() = if (assetType == AssetType.CASH || assetType == AssetType.DEPOSIT || cost == 0.0) {
+        0.0
+    } else {
+        unrealizedProfit / cost
+    }
 
 private val profitColor = Color(0xFF9A5D50)
 private val lossColor = Color(0xFF627066)
